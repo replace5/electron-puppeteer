@@ -24,7 +24,7 @@ importStyle(ChromeTabsCSS)
  * @property {BrowserManager} browserManager
  * @property {Object} options 传入的配置信息
  */
-class Browser extends EventEmitter {
+export default class Browser extends EventEmitter {
 	/**
 	 * Browser构造函数
    * @constructor Browser
