@@ -5,7 +5,7 @@
     "name": "replace5",
     "email": "feng524822@sina.com"
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "module": "renderer/index.js",
   "dependencies": {
     "@pixi/jsdoc-template": "^2.6.0",
