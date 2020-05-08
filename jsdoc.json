@@ -1,0 +1,26 @@
+{
+  "tags": {
+    "allowUnknownTags": true
+  },
+  "source": {
+    "include": [
+      "renderer"
+    ]
+  },
+  "plugins": [
+    "plugins/markdown",
+    "./node_modules/@pixi/jsdoc-template/plugins/es6-fix"
+  ],
+  "opts": {
+    "destination": "./docs/",
+    "encoding": "utf8",
+    "template": "./node_modules/docdash"
+  },
+  "templates": {
+    "cleverLinks": false,
+    "monospaceLinks": false,
+    "default": {
+      "outputSourceFiles": true
+    }
+  }
+}
