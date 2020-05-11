@@ -1,0 +1,38 @@
+{
+  "name": "electron-puppeteer-test",
+  "version": "1.0.0",
+  "description": "electron-puppeteer-test",
+  "build": {
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "productName": "electron-puppeteer-test",
+    "appId": "com.sunteng.electron-puppeteer-test.app",
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon/512x512.png"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "build/icon/icon.ico"
+    }
+  },
+  "main": "app.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^8.2.3",
+    "electron-builder": "^22.4.1"
+  },
+  "dependencies": {
+    "electron-puppeteer": "^1.0.1"
+  }
+}

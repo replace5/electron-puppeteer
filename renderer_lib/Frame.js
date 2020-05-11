@@ -1,7 +1,26 @@
-import EventEmitter from "./EventEmitter.js"
-import ElementHandle from "./ElementHandle.js"
-import { BoundIpc } from "./ipc.js"
-import { TimeoutPromise, proxyBindDecorator } from "./util.js"
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
+
+var _EventEmitter = require("./EventEmitter.js");
+
+var _EventEmitter2 = _interopRequireDefault(_EventEmitter);
+
+var _ElementHandle = require("./ElementHandle.js");
+
+var _ElementHandle2 = _interopRequireDefault(_ElementHandle);
+
+var _ipc = require("./ipc.js");
+
+var _util = require("./util.js");
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
 
 /**
  * @class Frame Frame类，webview的iframe，主页面是mainFrame
@@ -13,7 +32,7 @@ import { TimeoutPromise, proxyBindDecorator } from "./util.js"
  * @property {ElementHandle} document 当前frame的document操作句柄
  *
  */
-class Frame extends EventEmitter {
+class Frame extends _EventEmitter2.default {
   /**
    * @typedef FrameInfo frame信息
    * @property {string} FrameInfo.UUID iframe的UUID值
@@ -30,42 +49,38 @@ class Frame extends EventEmitter {
    * @param {FrameInfo} frameInfo frame的信息
    */
   constructor(page, webviewElement, frameInfo) {
-    super()
+    super();
 
-    this._frameInfo = frameInfo
+    this._frameInfo = frameInfo;
 
-    this._page = page
-    this.webview = webviewElement
+    this._page = page;
+    this.webview = webviewElement;
     // webview的webContentsId
-    this._webContentsId = frameInfo.routingId
-    this.isMainFrame = frameInfo.isMainFrame
-    this.ipc = new BoundIpc(this.webview, frameInfo.UUID)
-    this.document = new ElementHandle(this, "document", [])
+    this._webContentsId = frameInfo.routingId;
+    this.isMainFrame = frameInfo.isMainFrame;
+    this.ipc = new _ipc.BoundIpc(this.webview, frameInfo.UUID);
+    this.document = new _ElementHandle2.default(this, "document", []);
 
-    this._childFrames = []
-    this._listenChildFramesRegister()
-    this._listenChildFramesUnregister()
+    this._childFrames = [];
+    this._listenChildFramesRegister();
+    this._listenChildFramesUnregister();
   }
   // 监听当前frame下子iframe的注册事件
   _listenChildFramesRegister() {
-    this.ipc.on("childFrame.register", (frameInfo) => {
-      let originInfo = this._childFrames.find(
-        (item) => item.UUID === frameInfo.UUID,
-      )
+    this.ipc.on("childFrame.register", frameInfo => {
+      let originInfo = this._childFrames.find(item => item.UUID === frameInfo.UUID);
       if (originInfo) {
-        Object.assign(originInfo, frameInfo)
+        Object.assign(originInfo, frameInfo);
       } else {
-        this._childFrames.push(frameInfo)
+        this._childFrames.push(frameInfo);
       }
-    })
+    });
   }
   // 监听当前frame下子iframe的注销事件
   _listenChildFramesUnregister() {
-    this.ipc.on("childFrame.unregister", (frameInfo) => {
-      this._childFrames = this._childFrames.filter(
-        (item) => item.UUID !== frameInfo.UUID,
-      )
-    })
+    this.ipc.on("childFrame.unregister", frameInfo => {
+      this._childFrames = this._childFrames.filter(item => item.UUID !== frameInfo.UUID);
+    });
   }
   /**
    * 注入一个指定url或(content)的script标签到页面
@@ -78,7 +93,7 @@ class Frame extends EventEmitter {
    * @return {Promise<ElementHandle>} 返回注入脚本的dom句柄实例
    */
   addScriptTag(options) {
-    return this.ipc.send("frame.addScriptTag", options)
+    return this.ipc.send("frame.addScriptTag", options);
   }
   /**
    * 注入一个link(url)或style(content)标签到页面
@@ -89,19 +104,15 @@ class Frame extends EventEmitter {
    * @return {Promise<ElementHandle>} 返回注入样式的dom句柄实例
    */
   addStyleTag(options) {
-    return this.ipc.send("frame.addStyleTag", options)
+    return this.ipc.send("frame.addStyleTag", options);
   }
   /**
    * 获取当前frame
    */
   childFrames() {
-    return this._childFrames.map(
-      (info) =>
-        new Frame(this._page, this.webview, {
-          ...info,
-          parent: this._frameInfo,
-        }),
-    )
+    return this._childFrames.map(info => new Frame(this._page, this.webview, _extends({}, info, {
+      parent: this._frameInfo
+    })));
   }
   /**
    * todo
@@ -110,7 +121,7 @@ class Frame extends EventEmitter {
    * @return {string}
    */
   content() {
-    return this.ipc.send("frame.content")
+    return this.ipc.send("frame.content");
   }
   /**
    * 在frame运行指定函数
@@ -122,23 +133,19 @@ class Frame extends EventEmitter {
    */
   evaluate(pageFunction, args, timeout) {
     if (!Array.isArray(args)) {
-      timeout = args
-      args = []
+      timeout = args;
+      args = [];
     }
 
     args = args.map(function (arg) {
-      return JSON.stringify(arg)
-    })
+      return JSON.stringify(arg);
+    });
 
     if (typeof pageFunction == "string") {
-      pageFunction = "function() {return " + pageFunction + "}"
+      pageFunction = "function() {return " + pageFunction + "}";
     }
 
-    return this.ipc.send(
-      "frame.evaluate",
-      { pageFunction: pageFunction.toString(), args: args },
-      timeout,
-    )
+    return this.ipc.send("frame.evaluate", { pageFunction: pageFunction.toString(), args: args }, timeout);
   }
   /**
    * 控制当前frame跳转到指定url
@@ -150,50 +157,51 @@ class Frame extends EventEmitter {
    *
    * @return {Promise<undefined>}
    */
-  async goto(url, options) {
-    let timeout = (options && options.timeout) || 5e3
-    var waitUntil = (options && options.waitUntil) || "domcontentloaded"
+  goto(url, options) {
+    var _this = this;
 
-    // 递归获取最终的跳转地址
-    // timeout计时结束后就停止监听跳转
-    var redirectURL = url
-    const _getRedirectUrl = () => {
-      this.page().webRequest.onBeforeRedirect(
-        {
-          urls: ["http://*/*", "https://*/*"],
-        },
-        (details) => {
+    return _asyncToGenerator(function* () {
+      let timeout = options && options.timeout || 5e3;
+      var waitUntil = options && options.waitUntil || "domcontentloaded";
+
+      // 递归获取最终的跳转地址
+      // timeout计时结束后就停止监听跳转
+      var redirectURL = url;
+      const _getRedirectUrl = function () {
+        _this.page().webRequest.onBeforeRedirect({
+          urls: ["http://*/*", "https://*/*"]
+        }, function (details) {
           if (details.url === redirectURL) {
-            redirectURL = details.redirectURL
+            redirectURL = details.redirectURL;
             // console.log('onBeforeRedirect: ', redirectURL)
           }
-        },
-      )
-    }
-    _getRedirectUrl()
+        });
+      };
+      _getRedirectUrl();
 
-    await this.ipc.send("frame.goto", {
-      url: url,
-    })
+      yield _this.ipc.send("frame.goto", {
+        url: url
+      });
 
-    return new TimeoutPromise((resolve) => {
-      this.ipc.on("frame.goto." + waitUntil, (payload) => {
-        if (payload.url === redirectURL) {
-          resolve(payload)
+      return new _util.TimeoutPromise(function (resolve) {
+        _this.ipc.on("frame.goto." + waitUntil, function (payload) {
+          if (payload.url === redirectURL) {
+            resolve(payload);
+          }
+        });
+      }, timeout).catch(function (err) {
+        if (err === "promise.timeout") {
+          return Promise.reject("goto.timeout");
         }
-      })
-    }, timeout).catch((err) => {
-      if (err === "promise.timeout") {
-        return Promise.reject("goto.timeout")
-      }
-      return Promise.reject(err)
-    })
+        return Promise.reject(err);
+      });
+    })();
   }
   /**
    * todo
    */
   isDetached() {
-    return Promise.reject("todo")
+    return Promise.reject("todo");
   }
   /**
    * frame的名称
@@ -201,7 +209,7 @@ class Frame extends EventEmitter {
    * @return {string}
    */
   name() {
-    return this._frameInfo.name
+    return this._frameInfo.name;
   }
   /**
    * frame所属的page实例
@@ -209,7 +217,7 @@ class Frame extends EventEmitter {
    * @return {Page}
    */
   page() {
-    return this._page
+    return this._page;
   }
   /**
    * frame的parentFrame
@@ -219,15 +227,15 @@ class Frame extends EventEmitter {
    */
   parentFrame() {
     if (this._frameInfo.parent) {
-      return new Frame(this._page, this.webview, this._frameInfo.parent)
+      return new Frame(this._page, this.webview, this._frameInfo.parent);
     }
-    return null
+    return null;
   }
   /**
    * todo
    */
   select() {
-    return Promise.reject("todo")
+    return Promise.reject("todo");
   }
   /**
    * todo
@@ -237,7 +245,7 @@ class Frame extends EventEmitter {
    * @return {Promise<undefined>}
    */
   setContent(html) {
-    return this.ipc.send("frame.setContent", html)
+    return this.ipc.send("frame.setContent", html);
   }
   /**
    * frame的标题
@@ -246,10 +254,10 @@ class Frame extends EventEmitter {
    */
   title() {
     if (this.isMainFrame) {
-      return this.webview.getTitle()
+      return this.webview.getTitle();
     }
 
-    return this.ipc.send("frame.title")
+    return this.ipc.send("frame.title");
   }
   /**
    * todo
@@ -261,7 +269,7 @@ class Frame extends EventEmitter {
    * @property {number} [options.delay] // 延迟输入, 操作更像用户
    */
   type(selector, text, options) {
-    return this.ipc.send("frame.type", { selector, text, options })
+    return this.ipc.send("frame.type", { selector, text, options });
   }
   /**
    * 获取url，如果是mainFrame为当前url，如果是iframe，则是src属性
@@ -270,10 +278,10 @@ class Frame extends EventEmitter {
    */
   url() {
     if (this.isMainFrame) {
-      return this.webview.getURL()
+      return this.webview.getURL();
     }
 
-    return this._frameInfo.url
+    return this._frameInfo.url;
   }
   /**
    * waitForSelector|waitForFunction|setTimeout的结合体
@@ -283,13 +291,13 @@ class Frame extends EventEmitter {
    */
   waitFor(selectorOrFunctionOrTimeout, options, ...args) {
     if (typeof selectorOrFunctionOrTimeout === "string") {
-      return this.waitForSelector(selectorOrFunctionOrTimeout, options)
+      return this.waitForSelector(selectorOrFunctionOrTimeout, options);
     } else if (typeof selectorOrFunctionOrTimeout === "number") {
-      return new Promise((resolve) => {
-        setTimeout(resolve, selectorOrFunctionOrTimeout)
-      })
+      return new Promise(resolve => {
+        setTimeout(resolve, selectorOrFunctionOrTimeout);
+      });
     } else {
-      return this.waitForFunction(selectorOrFunctionOrTimeout, options, ...args)
+      return this.waitForFunction(selectorOrFunctionOrTimeout, options, ...args);
     }
   }
   /**
@@ -303,14 +311,14 @@ class Frame extends EventEmitter {
    */
   waitForFunction(pageFunction, options, ...args) {
     if (typeof pageFunction == "string") {
-      pageFunction = "function() {return " + pageFunction + "}"
+      pageFunction = "function() {return " + pageFunction + "}";
     }
 
     return this.ipc.send("frame.waitForFunction", {
       pageFunction: pageFunction.toString(),
       args: args,
-      options,
-    })
+      options
+    });
   }
   /**
    * 等待跳转完成
@@ -321,17 +329,17 @@ class Frame extends EventEmitter {
    * @return {Promise<Object>} 返回跳转后frame的信息
    */
   waitForNavigation(options) {
-    return new TimeoutPromise((resolve) => {
-      var waitUntil = (options && options.waitUntil) || "domcontentloaded"
+    return new _util.TimeoutPromise(resolve => {
+      var waitUntil = options && options.waitUntil || "domcontentloaded";
       this.ipc.once("frame.waitForNavigation." + waitUntil, function (param) {
-        resolve(param)
-      })
-    }, (options && options.timeout) || 5e3).catch((err) => {
+        resolve(param);
+      });
+    }, options && options.timeout || 5e3).catch(err => {
       if (err === "promise.timeout") {
-        return Promise.reject("waitForNavigation.timeout")
+        return Promise.reject("waitForNavigation.timeout");
       }
-      return Promise.reject(err)
-    })
+      return Promise.reject(err);
+    });
   }
   /**
    * 在指定时间内轮询查询dom节点，直到查找到节点
@@ -343,20 +351,16 @@ class Frame extends EventEmitter {
    * @return {Promise<undefined>} 成功则resolve，失败返回reject
    */
   waitForSelector(selector, options) {
-    return this.ipc.send(
-      "frame.waitForSelector",
-      {
-        selector: selector,
-        options: options,
-      },
-      options && options.timeout,
-    )
+    return this.ipc.send("frame.waitForSelector", {
+      selector: selector,
+      options: options
+    }, options && options.timeout);
   }
   /**
    * todo
    */
-  waitForXPath(/* xpath, options */) {
-    return Promise.reject("todo")
+  waitForXPath() /* xpath, options */{
+    return Promise.reject("todo");
   }
   /**
    * 点击frame内的指定节点
@@ -366,7 +370,7 @@ class Frame extends EventEmitter {
    * @return {Promise<boolean>}
    */
   click(selector, options) {
-    return this.document.$(selector).click(options)
+    return this.document.$(selector).click(options);
   }
   /**
    * 聚焦frame内的指定节点
@@ -376,7 +380,7 @@ class Frame extends EventEmitter {
    * @return {Promise<boolean>}
    */
   focus(selector, options) {
-    return this.document.$(selector).focus(options)
+    return this.document.$(selector).focus(options);
   }
   /**
    * 取消聚焦frame内的指定节点
@@ -386,7 +390,7 @@ class Frame extends EventEmitter {
    * @return {Promise<boolean>}
    */
   blur(selector, options) {
-    return this.document.$(selector).blur(options)
+    return this.document.$(selector).blur(options);
   }
   /**
    * 鼠标移入frame内的指定节点，对应mouseover事件
@@ -396,19 +400,19 @@ class Frame extends EventEmitter {
    * @return {Promise<boolean>}
    */
   hover(selector, options) {
-    return this.document.$(selector).hover(options)
+    return this.document.$(selector).hover(options);
   }
   /**
    * todo
    */
   tap(selector, options) {
-    return this.document.$(selector).tap(options)
+    return this.document.$(selector).tap(options);
   }
   /**
    * 获取localStorage的所有key集合
    */
   localStorageKeys() {
-    return this.ipc.send("frame.localStorageKeys")
+    return this.ipc.send("frame.localStorageKeys");
   }
   /**
    * localStorage.getItem
@@ -418,8 +422,8 @@ class Frame extends EventEmitter {
    */
   localStorageGet(key) {
     return this.ipc.send("frame.localStorageGet", {
-      key: key,
-    })
+      key: key
+    });
   }
   /**
    * localStorage.setItem
@@ -431,8 +435,8 @@ class Frame extends EventEmitter {
   localStorageSet(key, value) {
     return this.ipc.send("frame.localStorageSet", {
       key: key,
-      value: value,
-    })
+      value: value
+    });
   }
   /**
    * localStorage.removeItem
@@ -442,40 +446,36 @@ class Frame extends EventEmitter {
    */
   localStorageRemove(key) {
     return this.ipc.send("frame.localStorageRemove", {
-      key: key,
-    })
+      key: key
+    });
   }
 }
 
-export default proxyBindDecorator(
-  [
-    /**
-     * [frame.document.$的简写]{@link ElementHandle#$}
-     * @method Frame#$ 
-     */
-    "$",
-    /**
-     * [frame.document.$$的简写]{@link ElementHandle#$$}
-     * @method Frame#$$ 
-     */
-    "$$",
-    /**
-     * [frame.document.$eval的简写]{@link ElementHandle#$eval}
-     * @method Frame#$eval 
-     */
-    "$eval",
-    /**
-     * [frame.document.$$eval的简写]{@link ElementHandle#$$eval}
-     * @method Frame#$$eval 
-     */
-    "$$eval",
-    /**
-     * [frame.document.$x的简写]{@link ElementHandle#$x}
-     * @method Frame#$x 
-     */
-    "$x"
-  ],
-  function () {
-    return this.document
-  },
-)(Frame)
+exports.default = (0, _util.proxyBindDecorator)([
+/**
+ * [frame.document.$的简写]{@link ElementHandle#$}
+ * @method Frame#$ 
+ */
+"$",
+/**
+ * [frame.document.$$的简写]{@link ElementHandle#$$}
+ * @method Frame#$$ 
+ */
+"$$",
+/**
+ * [frame.document.$eval的简写]{@link ElementHandle#$eval}
+ * @method Frame#$eval 
+ */
+"$eval",
+/**
+ * [frame.document.$$eval的简写]{@link ElementHandle#$$eval}
+ * @method Frame#$$eval 
+ */
+"$$eval",
+/**
+ * [frame.document.$x的简写]{@link ElementHandle#$x}
+ * @method Frame#$x 
+ */
+"$x"], function () {
+  return this.document;
+})(Frame);

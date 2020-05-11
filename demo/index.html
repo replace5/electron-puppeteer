@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, "Helvetica Neue", Helvetica, Arial,
+          "PingFang SC", "Hiragino Sans GB", "WenQuanYi Micro Hei",
+          "Microsoft Yahei", sans-serif;
+        font-size: 14px;
+        line-height: 1.42858;
+        color: #333;
+        background-color: #fff;
+        -webkit-font-smoothing: antialiased;
+      }
+      ul,
+      li {
+        list-style: none;
+      }
+      body {
+        display: flex;
+      }
+      #nav {
+        width: 160px;
+        padding: 10px;
+        border-right: 1px solid #e8e8e8;
+      }
+      #nav li {
+        height: 30px;
+        line-height: 30px;
+        background: #eee;
+        padding: 0 15px;
+        border-radius: 5px;
+        font-size: 13px;
+        margin-bottom: 5px;
+        cursor: pointer;
+        color: #314659;
+      }
+      #nav li:hover {
+        background: #e7e7e7;
+      }
+      #nav li.active {
+        background: #e6f7ff;
+        color: #1890ff;
+      }
+      #container {
+        flex: 1;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="nav">
+      <ul>
+        <li data-id="segmentfault" data-origin="https://segmentfault.com/">
+          segmentfault
+        </li>
+        <li data-id="cnblogs" data-origin="https://www.cnblogs.com/">
+          cnblogs/
+        </li>
+      </ul>
+    </div>
+    <div id="container"></div>
+    <script type="module">
+      const path = require("path");
+      const electronPuppeteer = require("electron-puppeteer").default;
+
+      function bindEvent() {
+        document.querySelector("#nav").addEventListener(
+          "click",
+          function (evt) {
+            if (evt.target.tagName === "LI") {
+              let id = evt.target.dataset.id;
+              let origin = evt.target.dataset.origin;
+              if (id) {
+                openBrowser(id, origin);
+                setNavAction(id);
+              }
+            }
+          },
+          false
+        );
+      }
+
+      function openDefault() {
+        document.querySelector("#nav li").click();
+      }
+
+      function setNavAction(id) {
+        document.querySelectorAll("#nav li").forEach((item) => {
+          if (item && item.dataset && item.dataset.id === id) {
+            item.classList.add("active");
+          } else {
+            item.classList.remove("active");
+          }
+        });
+      }
+
+      const map = new Map();
+      async function openBrowser(id, origin) {
+        let browser = map.get(id);
+
+        if (!browser) {
+          // 打开一个browser，通过partition设置独立的session空间
+          // open a browser
+          browser = await electronPuppeteer.launch({
+            // container must has height, example: `<div id="container" style="height: 100vh"></div>`
+            container: document.getElementById("container"),
+            startUrl: origin,
+            partition: "persist: " + id,
+            // webview.preload.js的路径
+            preload:
+              "file://" +
+              path.join(
+                __dirname,
+                "node_modules/electron-puppeteer/preload/webview.preload.js"
+              ),
+          });
+          browser.bringToFront();
+          map.set(id, browser);
+
+          const page = await browser.newPage();
+          await page.goto(origin);
+
+          let searchInputSelector, searchButtonSelector;
+
+          switch (id) {
+            case "segmentfault":
+              searchInputSelector = "#searchBox";
+              searchButtonSelector = ".header-search button";
+              break;
+            case "cnblogs":
+              searchInputSelector = "#zzk_q";
+              searchButtonSelector = ".search_btn";
+              break;
+          }
+
+          // input search text
+          let $search = await page.$(searchInputSelector);
+          let word = "electron";
+          for (let i = 0; i < word.length; i++) {
+            let c = word.charAt(i);
+            await $search.press(c);
+          }
+          // click search button
+          await page.click(searchButtonSelector);
+        } else {
+          browser.bringToFront();
+        }
+      }
+
+      bindEvent();
+      // openDefault();
+    </script>
+  </body>
+</html>

@@ -1,8 +1,13 @@
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+	value: true
+});
 /**
  * @file css to js
  */
 
-export default `
+exports.default = `
 .electron-puppeteer-browser {
   height: 100%;
 }
@@ -19,4 +24,4 @@ export default `
 	height: 100%;
 	display: none;
 }
-`
+`;

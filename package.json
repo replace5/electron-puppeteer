@@ -5,7 +5,8 @@
     "name": "replace5",
     "email": "feng524822@sina.com"
   },
-  "version": "1.0.1",
+  "version": "1.0.3",
+  "main": "renderer_lib/index.js",
   "module": "renderer/index.js",
   "dependencies": {
     "@pixi/jsdoc-template": "^2.6.0",
@@ -24,9 +25,12 @@
     "url": "git+https://github.com/replac5/electron-puppeteer"
   },
   "scripts": {
-    "docs": "node_modules/.bin/jsdoc -c jsdoc.json --verbose"
+    "docs": "node_modules/.bin/jsdoc -c jsdoc.json --verbose",
+    "babel": "npx babel renderer --out-dir renderer_lib"
   },
   "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-preset-electron": "^1.4.15",
     "docdash": "^1.2.0",
     "jsdoc": "^3.6.4"
   },

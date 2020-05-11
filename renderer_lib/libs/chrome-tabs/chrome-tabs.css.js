@@ -1,4 +1,9 @@
-export default `
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = `
 .chrome-tabs {
   box-sizing: border-box;
   position: relative;
@@ -284,4 +289,4 @@ export default `
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2' viewBox='0 0 2 2'><rect x='0' y='0' width='2' height='1' fill='rgba(0, 0, 0, .27)'></rect></svg>");
   }
 }
-`
+`;

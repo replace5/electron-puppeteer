@@ -1,41 +1,46 @@
-/**
- * @file BrowserManager类
- */
-import Browser from "./Browser.js"
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _Browser = require("./Browser.js");
+
+var _Browser2 = _interopRequireDefault(_Browser);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /**
  * @class BrowserManager
  */
-export default class BrowserManager {
+class BrowserManager {
   /**
    * @constructor BrowserManager
    *
    */
   constructor() {
-    this._browsers = new Map()
+    this._browsers = new Map();
   }
   /**
    * 打开浏览器
    * @param {*} options 见Browser的options配置
    */
   launch(options) {
-    const browser = new Browser(this, options)
-    return browser
-      .init()
-      .then(() => (this._browsers.set(browser.id, browser), browser))
+    const browser = new _Browser2.default(this, options);
+    return browser.init().then(() => (this._browsers.set(browser.id, browser), browser));
   }
   /**
    * 通过browserId获取browser实例
    * @param {string} browserId browser.id
    */
   get(browserId) {
-    return this._browsers.get(browserId)
+    return this._browsers.get(browserId);
   }
   /**
    * 获取当前最视窗最前端的browser实例，也就是激活的browser实例
    */
   frontBrowser() {
-    return this._browsers.find((item) => item.isFront === true)
+    return this._browsers.find(item => item.isFront === true);
   }
   /**
    * 删除browser，不可直接调用
@@ -44,7 +49,7 @@ export default class BrowserManager {
    * @param {string} browserId
    */
   _removeBrowser(browserId) {
-    this._browsers.delete(browserId)
+    this._browsers.delete(browserId);
   }
   /**
    * 激活browser，不可直接调用
@@ -53,12 +58,15 @@ export default class BrowserManager {
    * @param {string} pageId
    */
   _bringBrowserToFront(browserId) {
-    this._browsers.forEach((browser) => {
+    this._browsers.forEach(browser => {
       if (browserId === browser.id) {
-        browser._doFront()
+        browser._doFront();
       } else {
-        browser._doBack()
+        browser._doBack();
       }
-    })
+    });
   }
 }
+exports.default = BrowserManager; /**
+                                   * @file BrowserManager类
+                                   */
