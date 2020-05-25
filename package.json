@@ -5,7 +5,7 @@
     "name": "replace5",
     "email": "feng524822@sina.com"
   },
-  "version": "1.0.3",
+  "version": "1.0.8",
   "main": "renderer_lib/index.js",
   "module": "renderer/index.js",
   "dependencies": {

@@ -1,12 +1,11 @@
 /**
  * @file ipc通信类
  */
+const {remote} = require("electron")
 import util from "./util.js"
 
 const isDevelopment = process.env.NODE_ENV === "development"
 const ipcLog = process.env.ipcLog
-
-console.log("ipcLog", typeof ipcLog, ipcLog)
 
 // renderer to preload
 const SEND_NAME = "electron-puppeteer_r2p"
@@ -26,6 +25,7 @@ export default class Ipc {
     this.webview = webview
     this.options = options || {}
     this._hold = false
+    this._destroyed = false
     this._holdTasks = []
     this._listeners = []
     // UUID -> routingId的映射
@@ -64,7 +64,7 @@ export default class Ipc {
               "font-weight:bold;color:green;",
               `name: ${evt.name},`,
               `UUID: ${evt.UUID},`,
-              `payload: ${JSON.stringify(evt.payload)}`,
+              `payload: ${JSON.stringify(evt.payload)}`
             )
         } else {
           isDevelopment &&
@@ -75,7 +75,7 @@ export default class Ipc {
               `name: ${evt.name},`,
               `ack: ${evt.ack},`,
               `UUID: ${evt.UUID},`,
-              `payload: ${JSON.stringify(evt.payload)}`,
+              `payload: ${JSON.stringify(evt.payload)}`
             )
         }
 
@@ -91,12 +91,15 @@ export default class Ipc {
             item.name === evt.name &&
             !!item.isAck === !!evt.isAck
           ) {
-            let once = item.isAck && item.once
+            let once = item.isAck || item.once
+            results.push(item.listener.call(this.webview, evt.payload, evt))
             if (once) {
               this._listeners.splice(i--, 1)
             }
-            results.push(item.listener.call(this.webview, evt.payload, evt))
-            break
+            // ack是唯一的，无需往后匹配
+            if (item.isAck) {
+              break
+            }
           }
         }
 
@@ -127,6 +130,13 @@ export default class Ipc {
       this._hold = false
       this._runHoldTasks()
     })
+
+    this.webview.addEventListener("close", () => {
+      this._destroyed = true
+    })
+    this.webview.addEventListener("destroyed", () => {
+      this._destroyed = true
+    })
   }
   _runHoldTasks() {
     while (this._holdTasks.length) {
@@ -136,7 +146,7 @@ export default class Ipc {
       } else {
         this.send(task.UUID, task.name, task.payload, task.timeout).then(
           task.resolve,
-          task.reject,
+          task.reject
         )
       }
     }
@@ -146,6 +156,9 @@ export default class Ipc {
     return util.uniqueId(ACK_PREFIX + name + "_")
   }
   _sendAck(UUID, ack, result, isMainFrame) {
+    if (this._destroyed) {
+      return false
+    }
     if (this._hold) {
       this._holdTasks.push({
         UUID,
@@ -162,24 +175,29 @@ export default class Ipc {
           "font-weight:bold;color:#c59519",
           `name: ${ack},`,
           `UUID: ${UUID},`,
-          `result: ${JSON.stringify(result)}`,
+          `result: ${JSON.stringify(result)}`
         )
 
       let sender = this._getSender(UUID)
-
-      try {
-        sender(SEND_NAME, {
-          UUID,
-          name: ack,
-          ack: "",
-          isAck: true,
-          payload: result,
-          isMainFrame: isMainFrame,
-        })
-      } catch (e) {}
+      if (sender) {
+        try {
+          sender(SEND_NAME, {
+            UUID,
+            name: ack,
+            ack: "",
+            isAck: true,
+            payload: result,
+            isMainFrame: isMainFrame,
+          })
+        } catch (e) {}
+      }
     }
   }
   _getSender(UUID) {
+    if (!this.webview.ownerDocument.contains(this.webview)) {
+      return null
+    }
+
     switch (UUID) {
       // any
       case "*":
@@ -188,8 +206,9 @@ export default class Ipc {
           this._routingIdMaps.forEach((routingId) => {
             if (!sended.has(routingId)) {
               sended.add(routingId)
-              let webContents = this.webview.getWebContents()
-              webContents.sendToFrame(routingId, name, data)
+              let contentsId = this.webview.getWebContentsId()
+              let contents = remote.webContents.fromId(contentsId)
+              contents.sendToFrame(routingId, name, data)
             }
           })
         }
@@ -203,8 +222,9 @@ export default class Ipc {
           console.error("ipc reply error, failed to map routingId")
           throw "ipc error"
         }
-        let webContents = this.webview.getWebContents()
-        return webContents.sendToFrame.bind(webContents, routingId)
+        let contentsId = this.webview.getWebContentsId()
+        let contents = remote.webContents.fromId(contentsId)
+        return contents.sendToFrame.bind(contents, routingId)
     }
   }
 
@@ -218,6 +238,10 @@ export default class Ipc {
    * @return {Promise<IpcEvent>} 返回promise，等待消息回复内容
    */
   send(UUID, name, payload, timeout) {
+    if (this._destroyed) {
+      return Promise.reject("ipc webview destroyed")
+    }
+
     if (Array.isArray(name)) {
       return Promise.all(name.map((item) => this.send(item, payload, timeout)))
     }
@@ -256,7 +280,11 @@ export default class Ipc {
       // 超时判断
       let timer = window.setTimeout(() => {
         this.off(UUID, ack, onAck)
-        reject("ipc.timeout")
+        reject(
+          `ipc.timeout.send: ${name}@${UUID}, payload: ${JSON.stringify(
+            payload
+          )}`
+        )
       }, timeout)
 
       isDevelopment &&
@@ -267,21 +295,23 @@ export default class Ipc {
           `name: ${name},`,
           `ack: ${ack},`,
           `UUID: ${UUID},`,
-          `payload: ${JSON.stringify(payload)}`,
+          `payload: ${JSON.stringify(payload)}`
         )
 
       // 获取发送消息的sender
       let sender = this._getSender(UUID)
-      // 发送消息
-      sender(SEND_NAME, {
-        UUID,
-        name,
-        ack,
-        payload,
-        isAck: false,
-      })
+      if (sender) {
+        // 发送消息
+        sender(SEND_NAME, {
+          UUID,
+          name,
+          ack,
+          payload,
+          isAck: false,
+        })
+      }
     }).catch((err) => {
-      if (err === "ipc.timeout") {
+      if (typeof err === "string" && err.startsWith("ipc.timeout")) {
         isDevelopment &&
           ipcLog &&
           console.log(
@@ -290,7 +320,7 @@ export default class Ipc {
             `name: ${name},`,
             `ack: ${ack},`,
             `UUID: ${UUID},`,
-            `payload: ${JSON.stringify(payload)}`,
+            `payload: ${JSON.stringify(payload)}`
           )
       } else {
         console.error("ipc send error:", err)

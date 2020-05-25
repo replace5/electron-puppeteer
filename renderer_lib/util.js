@@ -7,6 +7,7 @@ exports.uniqueId = uniqueId;
 exports.loggerDecorator = loggerDecorator;
 exports.proxyBindDecorator = proxyBindDecorator;
 exports.importStyle = importStyle;
+exports.setDomAsOffsetParent = setDomAsOffsetParent;
 exports.TimeoutPromise = TimeoutPromise;
 /**
  * @file util
@@ -73,6 +74,15 @@ function importStyle(styleContent) {
     style.styleSheet.cssText = styleContent;
   } else {
     style.appendChild(document.createTextNode(styleContent));
+  }
+}
+
+// 将dom的position修改为可相对定位的节点
+function setDomAsOffsetParent(dom) {
+  var style = window.getComputedStyle(dom, null);
+  var set = new Set("absolute", "fixed", "relative", "sticky");
+  if (!set.has(style.position)) {
+    dom.style.position = "relative";
   }
 }
 

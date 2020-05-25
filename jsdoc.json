@@ -3,9 +3,7 @@
     "allowUnknownTags": true
   },
   "source": {
-    "include": [
-      "renderer"
-    ]
+    "include": ["renderer"]
   },
   "plugins": [
     "plugins/markdown",
@@ -22,5 +20,9 @@
     "default": {
       "outputSourceFiles": true
     }
+  },
+  "docdash": {
+    "sort": false,
+    "search": true
   }
 }

@@ -56,7 +56,7 @@ class Frame extends _EventEmitter2.default {
     this._page = page;
     this.webview = webviewElement;
     // webview的webContentsId
-    this._webContentsId = frameInfo.routingId;
+    this.webContentsId = frameInfo.routingId;
     this.isMainFrame = frameInfo.isMainFrame;
     this.ipc = new _ipc.BoundIpc(this.webview, frameInfo.UUID);
     this.document = new _ElementHandle2.default(this, "document", []);
@@ -137,10 +137,6 @@ class Frame extends _EventEmitter2.default {
       args = [];
     }
 
-    args = args.map(function (arg) {
-      return JSON.stringify(arg);
-    });
-
     if (typeof pageFunction == "string") {
       pageFunction = "function() {return " + pageFunction + "}";
     }
@@ -153,7 +149,7 @@ class Frame extends _EventEmitter2.default {
    * @param {string} url
    * @param {Object} [options]
    * @property {string} [options.waitUntil] 认定跳转成功的事件类型 load|domcontentloaded，默认为domcontentloaded
-   * @property {number} [options.timeout] 超时时间，单位为ms，默认为5000ms
+   * @property {number} [options.timeout] 超时时间，单位为ms，默认为10000ms
    *
    * @return {Promise<undefined>}
    */
@@ -161,7 +157,7 @@ class Frame extends _EventEmitter2.default {
     var _this = this;
 
     return _asyncToGenerator(function* () {
-      let timeout = options && options.timeout || 5e3;
+      let timeout = options && options.timeout || 1e4;
       var waitUntil = options && options.waitUntil || "domcontentloaded";
 
       // 递归获取最终的跳转地址
@@ -324,7 +320,7 @@ class Frame extends _EventEmitter2.default {
    * 等待跳转完成
    * @param {Object} [options]
    * @property {string} [options.waitUntil] 认定跳转成功的事件类型 load|domcontentloaded，默认为domcontentloaded
-   * @property {number} [options.timeout] 超时时间，单位为ms，默认为5000ms
+   * @property {number} [options.timeout] 超时时间，单位为ms，默认为10000ms
    *
    * @return {Promise<Object>} 返回跳转后frame的信息
    */
@@ -334,7 +330,7 @@ class Frame extends _EventEmitter2.default {
       this.ipc.once("frame.waitForNavigation." + waitUntil, function (param) {
         resolve(param);
       });
-    }, options && options.timeout || 5e3).catch(err => {
+    }, options && options.timeout || 1e4).catch(err => {
       if (err === "promise.timeout") {
         return Promise.reject("waitForNavigation.timeout");
       }
@@ -454,27 +450,27 @@ class Frame extends _EventEmitter2.default {
 exports.default = (0, _util.proxyBindDecorator)([
 /**
  * [frame.document.$的简写]{@link ElementHandle#$}
- * @method Frame#$ 
+ * @method Frame#$
  */
 "$",
 /**
  * [frame.document.$$的简写]{@link ElementHandle#$$}
- * @method Frame#$$ 
+ * @method Frame#$$
  */
 "$$",
 /**
  * [frame.document.$eval的简写]{@link ElementHandle#$eval}
- * @method Frame#$eval 
+ * @method Frame#$eval
  */
 "$eval",
 /**
  * [frame.document.$$eval的简写]{@link ElementHandle#$$eval}
- * @method Frame#$$eval 
+ * @method Frame#$$eval
  */
 "$$eval",
 /**
  * [frame.document.$x的简写]{@link ElementHandle#$x}
- * @method Frame#$x 
+ * @method Frame#$x
  */
 "$x"], function () {
   return this.document;

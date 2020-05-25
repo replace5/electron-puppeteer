@@ -2,16 +2,17 @@
  * @file Browser类
  */
 
-const { remote } = require("electron")
-const { Menu, MenuItem } = remote
+const {remote} = require("electron")
+const {Menu, MenuItem} = remote
 const Mousetrap = require("mousetrap")
 
 import EventEmitter from "./EventEmitter.js"
-import { uniqueId, importStyle } from "./util.js"
+import {uniqueId, importStyle, setDomAsOffsetParent} from "./util.js"
 import Page from "./Page.js"
+import Target from "./Target.js"
 import ChromeTabs from "./libs/chrome-tabs/chrome-tabs.js"
 import ChromeTabsCSS from "./libs/chrome-tabs/chrome-tabs.css.js"
-import { loadingGif, faviconPng } from "./images.js"
+import {loadingGif, faviconPng} from "./images.js"
 importStyle(ChromeTabsCSS)
 
 /**
@@ -33,6 +34,8 @@ export default class Browser extends EventEmitter {
    * @param {Object} options 传入配置
    * @param {Element} options.container DOM容器
    * @param {number} options.autoGcTime 闲置后的自动回收时间，单位为ms, 为0时为永不回收，默认为0
+   * @param {number} options.autoGcLimit 打开的browser超过autoGcLimit时才开启自动回收, 默认20
+   * @param {number} options.pageLoadingTimeout 页面加载超时时间, 默认10s
    * @param {boolean} options.createPage 是否新建默认page
    * @param {boolean} [options.devtools] 是否打开控制台
    * @param {string} [options.partition] session标识，相同的partition共享登录状态
@@ -89,6 +92,7 @@ export default class Browser extends EventEmitter {
     const div = document.createElement("div")
     div.innerHTML = template
     this.element = div.firstElementChild
+    setDomAsOffsetParent(this.options.container)
     this.options.container.appendChild(this.element)
 
     this.doms = {
@@ -192,23 +196,27 @@ export default class Browser extends EventEmitter {
         }
       })
     })
-
-    Mousetrap.bind("?", (evt) => {
-      console.log("show shortcuts!", evt)
-    })
   }
   _doBack() {
     this._hideTimeStart = Date.now()
     this.isFront = false
-    this.element.style.display = "none"
+    this.element.style.zIndex = -1
 
     // 自动回收
     if (this.options.autoGcTime) {
       this._gcTimer = setTimeout(() => {
-        this.close()
+        let autoGcLimit = this.options.autoGcLimit || 20
+        // 仅当打开的browser超过20个时才回收
+        if (this.browserManager.size > autoGcLimit) {
+          this.close()
+        }
       }, this.options.autoGcTime)
     }
 
+    /**
+     * 当前browser取消激活时触发
+     * @event Browser#back
+     */
     this.emit("back")
   }
   _doFront() {
@@ -218,10 +226,14 @@ export default class Browser extends EventEmitter {
 
     this._hideTimeStart = 0
     this.isFront = true
-    this.element.style.display = ""
+    this.element.style.zIndex = 1
     // 每次切换browser的时候强制重新布局，防止当前browser不可见时导致的tab样式错乱
     this._chromeTabs.layoutTabs()
 
+    /**
+     * 当前browser激活时触发
+     * @event Browser#front
+     */
     this.emit("front")
   }
   /**
@@ -242,7 +254,6 @@ export default class Browser extends EventEmitter {
    */
   bringToFront() {
     this.browserManager._bringBrowserToFront(this.id)
-    this.emit("bringToFront", this.id)
   }
   /**
    * 关闭browser
@@ -254,6 +265,11 @@ export default class Browser extends EventEmitter {
 
     this.options.container.removeChild(this.element)
     this.browserManager._removeBrowser(this.id)
+
+    /**
+     * 当前browser关闭时触发
+     * @event Browser#close
+     */
     this.emit("close", this.id)
   }
   /**
@@ -283,28 +299,72 @@ export default class Browser extends EventEmitter {
   }
   /**
    * 新建页面
-   * @async
    * @param {string} [url] 页面跳转地址，不传则跳转到browser的startUrl
-   * @param {string} [referer] referrer，不传则为browser的startUrlReferrer
+   * @param {string} [referrer] referrer，不传则为browser的startUrlReferrer
    *
    * @return {Promise<Page>} 返回构建的page实例
    */
-  async newPage(url, referer) {
+  newPage(url, referrer) {
+    let page = this._newPageWithoutReady(null, url, referrer)
+    return page._waitForReady().then(() => page)
+  }
+  /**
+   * 新建页面, 不等待页面加载完成
+   * @param {Target} opener 打开当前页面的opener
+   * @param {string} [url] 页面跳转地址，不传则跳转到browser的startUrl
+   * @param {string} [referrer] referrer，不传则为browser的startUrlReferrer
+   *
+   * @return {Page} 返回构建的page实例
+   */
+  _newPageWithoutReady(opener, url, referrer) {
     var page = new Page(this, {
       container: this.doms.pagesContainer,
       partition: this.options.partition,
       devtools: this.options.devtools,
       preload: this.options.preload,
+      loadingTimeout: this.options.pageLoadingTimeout,
       startUrl: url || this.options.startUrl,
-      startUrlReferrer: referer || this.options.startUrlReferrer,
+      startUrlReferrer: referrer || this.options.startUrlReferrer,
     })
-    page._injectShortcuts(this.shortcuts.slice(0))
-    await page.init()
-    this._pages.push(page)
-    this._handlePageTab(page)
-    await page.bringToFront()
+    /**
+     * 当前browser新建page时触发, 此时page还未构建完毕
+     * @event Browser#new-page
+     * @type {Page}
+     */
+    this.emit("new-page", page)
 
-    this.emit("newPage", page)
+    let target = new Target(page, opener)
+    /**
+     * 打开新标签页时触发
+     * @event Browser#targetcreated
+     * @type {Target}
+     */
+    this.emit("targetcreated", target)
+    page.on("connect", () => {
+      /**
+       * 打开的页面url变更时触发
+       * @event Browser#targetchanged
+       * @type {Target}
+       */
+      this.emit("targetchanged", target)
+    })
+    page.once("close", () => {
+      /**
+       * 新打开的页面关闭时触发
+       * @event Browser#targetdestroyed
+       * @type {Target}
+       */
+      this.emit("targetdestroyed", target)
+    })
+
+    page._injectShortcuts(this.shortcuts.slice(0))
+    page.init()
+    this._pages.push(page)
+
+    this._handlePageTab(page)
+
+    page.bringToFront()
+
     return page
   }
   /**
@@ -321,7 +381,7 @@ export default class Browser extends EventEmitter {
       },
       {
         background: true,
-      },
+      }
     ))
 
     elm.addEventListener("contextmenu", () => {
@@ -364,10 +424,10 @@ export default class Browser extends EventEmitter {
     })
     page.on("new-window", async (evt) => {
       let url = page.url()
-      let pageNew = await this.newPage()
-      await pageNew.goto(evt.url, {
-        referer: url,
-      })
+      let newPage = this._newPageWithoutReady(page.target(), evt.url, url)
+      try {
+        evt.returnValue = newPage.webview.getWebContents().id
+      } catch (e) {}
     })
   }
   /**
@@ -384,7 +444,7 @@ export default class Browser extends EventEmitter {
         click: () => {
           page.reload()
         },
-      }),
+      })
     )
     menu.append(
       new MenuItem({
@@ -392,12 +452,12 @@ export default class Browser extends EventEmitter {
         click: () => {
           this.newPage(page.url(), page.url())
         },
-      }),
+      })
     )
     menu.append(
       new MenuItem({
         type: "separator",
-      }),
+      })
     )
     menu.append(
       new MenuItem({
@@ -406,7 +466,7 @@ export default class Browser extends EventEmitter {
         click: () => {
           page.goForward()
         },
-      }),
+      })
     )
     menu.append(
       new MenuItem({
@@ -415,12 +475,12 @@ export default class Browser extends EventEmitter {
         click: () => {
           page.goBack()
         },
-      }),
+      })
     )
     menu.append(
       new MenuItem({
         type: "separator",
-      }),
+      })
     )
     menu.append(
       new MenuItem({
@@ -428,7 +488,7 @@ export default class Browser extends EventEmitter {
         click: () => {
           page.close()
         },
-      }),
+      })
     )
     menu.append(
       new MenuItem({
@@ -438,9 +498,9 @@ export default class Browser extends EventEmitter {
             .filter((item) => item.id !== page.id)
             .forEach((item) => item.close())
         },
-      }),
+      })
     )
-    menu.popup({ window: remote.getCurrentWindow() })
+    menu.popup({window: remote.getCurrentWindow()})
   }
   /**
    * 删除页面，不可直接调用

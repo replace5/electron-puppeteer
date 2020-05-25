@@ -69,7 +69,7 @@ export default class ElementHandle extends EventEmitter {
           return new ElementHandle(
             this.contentFrame(),
             [selector, i],
-            this._joinSelfSelector(),
+            this._joinSelfSelector()
           )
         })
       })
@@ -82,9 +82,7 @@ export default class ElementHandle extends EventEmitter {
    * @return {Promise<*>}
    */
   $eval(selector, pageFunction) {
-    var args = [].slice.call(arguments, 1).map((arg) => {
-      return JSON.stringify(arg)
-    })
+    var args = [].slice.call(arguments, 1)
 
     return this.ipc.send("elementHandle.$eval", {
       selector: selector,
@@ -101,9 +99,7 @@ export default class ElementHandle extends EventEmitter {
    * @return {Promise<*>}
    */
   $$eval(selector, pageFunction) {
-    var args = [].slice.call(arguments, 1).map(function (arg) {
-      return JSON.stringify(arg)
-    })
+    var args = [].slice.call(arguments, 1)
 
     return this.ipc.send("elementHandle.$$eval", {
       selector: selector,

@@ -121,7 +121,7 @@ class ChromeTabs {
       numberOfTabs
     const clampedTargetWidth = Math.max(
       TAB_CONTENT_MIN_WIDTH,
-      Math.min(TAB_CONTENT_MAX_WIDTH, targetWidth),
+      Math.min(TAB_CONTENT_MAX_WIDTH, targetWidth)
     )
     const flooredClampedTargetWidth = Math.floor(clampedTargetWidth)
     const totalTabsWidthUsingTarget =
@@ -294,7 +294,7 @@ class ChromeTabs {
 
   cleanUpPreviouslyDraggedTabs() {
     this.tabEls.forEach((tabEl) =>
-      tabEl.classList.remove("chrome-tab-was-just-dragged"),
+      tabEl.classList.remove("chrome-tab-was-just-dragged")
     )
   }
 
@@ -306,7 +306,7 @@ class ChromeTabs {
       this.isDragging = false
       this.el.classList.remove("chrome-tabs-is-sorting")
       this.draggabillyDragging.element.classList.remove(
-        "chrome-tab-is-dragging",
+        "chrome-tab-is-dragging"
       )
       this.draggabillyDragging.element.style.transform = ""
       this.draggabillyDragging.dragEnd()
@@ -373,11 +373,11 @@ class ChromeTabs {
         const currentTabPositionX = originalTabPositionX + moveVector.x
         const destinationIndexTarget = closest(
           currentTabPositionX,
-          tabPositions,
+          tabPositions
         )
         const destinationIndex = Math.max(
           0,
-          Math.min(tabEls.length, destinationIndexTarget),
+          Math.min(tabEls.length, destinationIndexTarget)
         )
 
         if (currentIndex !== destinationIndex) {

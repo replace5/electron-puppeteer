@@ -24,6 +24,9 @@ export default class BrowserManager {
       .init()
       .then(() => (this._browsers.set(browser.id, browser), browser))
   }
+  get size() {
+    return this._browsers.size
+  }
   /**
    * 通过browserId获取browser实例
    * @param {string} browserId browser.id

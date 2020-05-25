@@ -9,7 +9,12 @@ Object.defineProperty(exports, "__esModule", {
 
 exports.default = `
 .electron-puppeteer-browser {
-  height: 100%;
+	position: absolute;
+	width: 100%;
+	height: 100%;
+	left: 0;
+	top: 0;
+	z-index: 1;
 }
 .electron-puppeteer-pages {
 	position: relative;

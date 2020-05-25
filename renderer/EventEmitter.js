@@ -155,7 +155,7 @@ proto.addListener = function addListener(evt, listener) {
           : {
               listener: listener,
               once: false,
-            },
+            }
       )
     }
   }
@@ -289,7 +289,7 @@ proto.removeListeners = function removeListeners(evt, listeners) {
 proto.manipulateListeners = function manipulateListeners(
   remove,
   evt,
-  listeners,
+  listeners
 ) {
   var i
   var value

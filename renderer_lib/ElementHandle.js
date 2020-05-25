@@ -86,9 +86,7 @@ class ElementHandle extends _EventEmitter2.default {
    * @return {Promise<*>}
    */
   $eval(selector, pageFunction) {
-    var args = [].slice.call(arguments, 1).map(arg => {
-      return JSON.stringify(arg);
-    });
+    var args = [].slice.call(arguments, 1);
 
     return this.ipc.send("elementHandle.$eval", {
       selector: selector,
@@ -105,9 +103,7 @@ class ElementHandle extends _EventEmitter2.default {
    * @return {Promise<*>}
    */
   $$eval(selector, pageFunction) {
-    var args = [].slice.call(arguments, 1).map(function (arg) {
-      return JSON.stringify(arg);
-    });
+    var args = [].slice.call(arguments, 1);
 
     return this.ipc.send("elementHandle.$$eval", {
       selector: selector,

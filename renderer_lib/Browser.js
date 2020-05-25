@@ -14,6 +14,10 @@ var _Page = require("./Page.js");
 
 var _Page2 = _interopRequireDefault(_Page);
 
+var _Target = require("./Target.js");
+
+var _Target2 = _interopRequireDefault(_Target);
+
 var _chromeTabs = require("./libs/chrome-tabs/chrome-tabs.js");
 
 var _chromeTabs2 = _interopRequireDefault(_chromeTabs);
@@ -61,6 +65,8 @@ class Browser extends _EventEmitter2.default {
    * @param {Object} options 传入配置
    * @param {Element} options.container DOM容器
    * @param {number} options.autoGcTime 闲置后的自动回收时间，单位为ms, 为0时为永不回收，默认为0
+   * @param {number} options.autoGcLimit 打开的browser超过autoGcLimit时才开启自动回收, 默认20
+   * @param {number} options.pageLoadingTimeout 页面加载超时时间, 默认10s
    * @param {boolean} options.createPage 是否新建默认page
    * @param {boolean} [options.devtools] 是否打开控制台
    * @param {string} [options.partition] session标识，相同的partition共享登录状态
@@ -121,6 +127,7 @@ class Browser extends _EventEmitter2.default {
     const div = document.createElement("div");
     div.innerHTML = template;
     this.element = div.firstElementChild;
+    (0, _util.setDomAsOffsetParent)(this.options.container);
     this.options.container.appendChild(this.element);
 
     this.doms = {
@@ -219,23 +226,27 @@ class Browser extends _EventEmitter2.default {
         }
       });
     });
-
-    Mousetrap.bind("?", evt => {
-      console.log("show shortcuts!", evt);
-    });
   }
   _doBack() {
     this._hideTimeStart = Date.now();
     this.isFront = false;
-    this.element.style.display = "none";
+    this.element.style.zIndex = -1;
 
     // 自动回收
     if (this.options.autoGcTime) {
       this._gcTimer = setTimeout(() => {
-        this.close();
+        let autoGcLimit = this.options.autoGcLimit || 20;
+        // 仅当打开的browser超过20个时才回收
+        if (this.browserManager.size > autoGcLimit) {
+          this.close();
+        }
       }, this.options.autoGcTime);
     }
 
+    /**
+     * 当前browser取消激活时触发
+     * @event Browser#back
+     */
     this.emit("back");
   }
   _doFront() {
@@ -245,10 +256,14 @@ class Browser extends _EventEmitter2.default {
 
     this._hideTimeStart = 0;
     this.isFront = true;
-    this.element.style.display = "";
+    this.element.style.zIndex = 1;
     // 每次切换browser的时候强制重新布局，防止当前browser不可见时导致的tab样式错乱
     this._chromeTabs.layoutTabs();
 
+    /**
+     * 当前browser激活时触发
+     * @event Browser#front
+     */
     this.emit("front");
   }
   /**
@@ -269,7 +284,6 @@ class Browser extends _EventEmitter2.default {
    */
   bringToFront() {
     this.browserManager._bringBrowserToFront(this.id);
-    this.emit("bringToFront", this.id);
   }
   /**
    * 关闭browser
@@ -281,6 +295,11 @@ class Browser extends _EventEmitter2.default {
 
     this.options.container.removeChild(this.element);
     this.browserManager._removeBrowser(this.id);
+
+    /**
+     * 当前browser关闭时触发
+     * @event Browser#close
+     */
     this.emit("close", this.id);
   }
   /**
@@ -314,33 +333,73 @@ class Browser extends _EventEmitter2.default {
   }
   /**
    * 新建页面
-   * @async
    * @param {string} [url] 页面跳转地址，不传则跳转到browser的startUrl
-   * @param {string} [referer] referrer，不传则为browser的startUrlReferrer
+   * @param {string} [referrer] referrer，不传则为browser的startUrlReferrer
    *
    * @return {Promise<Page>} 返回构建的page实例
    */
-  newPage(url, referer) {
-    var _this3 = this;
+  newPage(url, referrer) {
+    let page = this._newPageWithoutReady(null, url, referrer);
+    return page._waitForReady().then(() => page);
+  }
+  /**
+   * 新建页面, 不等待页面加载完成
+   * @param {Target} opener 打开当前页面的opener
+   * @param {string} [url] 页面跳转地址，不传则跳转到browser的startUrl
+   * @param {string} [referrer] referrer，不传则为browser的startUrlReferrer
+   *
+   * @return {Page} 返回构建的page实例
+   */
+  _newPageWithoutReady(opener, url, referrer) {
+    var page = new _Page2.default(this, {
+      container: this.doms.pagesContainer,
+      partition: this.options.partition,
+      devtools: this.options.devtools,
+      preload: this.options.preload,
+      loadingTimeout: this.options.pageLoadingTimeout,
+      startUrl: url || this.options.startUrl,
+      startUrlReferrer: referrer || this.options.startUrlReferrer
+    });
+    /**
+     * 当前browser新建page时触发, 此时page还未构建完毕
+     * @event Browser#new-page
+     * @type {Page}
+     */
+    this.emit("new-page", page);
 
-    return _asyncToGenerator(function* () {
-      var page = new _Page2.default(_this3, {
-        container: _this3.doms.pagesContainer,
-        partition: _this3.options.partition,
-        devtools: _this3.options.devtools,
-        preload: _this3.options.preload,
-        startUrl: url || _this3.options.startUrl,
-        startUrlReferrer: referer || _this3.options.startUrlReferrer
-      });
-      page._injectShortcuts(_this3.shortcuts.slice(0));
-      yield page.init();
-      _this3._pages.push(page);
-      _this3._handlePageTab(page);
-      yield page.bringToFront();
+    let target = new _Target2.default(page, opener);
+    /**
+     * 打开新标签页时触发
+     * @event Browser#targetcreated
+     * @type {Target}
+     */
+    this.emit("targetcreated", target);
+    page.on("connect", () => {
+      /**
+       * 打开的页面url变更时触发
+       * @event Browser#targetchanged
+       * @type {Target}
+       */
+      this.emit("targetchanged", target);
+    });
+    page.once("close", () => {
+      /**
+       * 新打开的页面关闭时触发
+       * @event Browser#targetdestroyed
+       * @type {Target}
+       */
+      this.emit("targetdestroyed", target);
+    });
 
-      _this3.emit("newPage", page);
-      return page;
-    })();
+    page._injectShortcuts(this.shortcuts.slice(0));
+    page.init();
+    this._pages.push(page);
+
+    this._handlePageTab(page);
+
+    page.bringToFront();
+
+    return page;
   }
   /**
    * page对应tab的右键菜单，图标及标题的更新
@@ -348,7 +407,7 @@ class Browser extends _EventEmitter2.default {
    * @param {Page} page
    */
   _handlePageTab(page) {
-    var _this4 = this;
+    var _this3 = this;
 
     let elm = page.$tabEl = this._chromeTabs.addTab({
       id: page.id,
@@ -399,10 +458,10 @@ class Browser extends _EventEmitter2.default {
     page.on("new-window", (() => {
       var _ref = _asyncToGenerator(function* (evt) {
         let url = page.url();
-        let pageNew = yield _this4.newPage();
-        yield pageNew.goto(evt.url, {
-          referer: url
-        });
+        let newPage = _this3._newPageWithoutReady(page.target(), evt.url, url);
+        try {
+          evt.returnValue = newPage.webview.getWebContents().id;
+        } catch (e) {}
       });
 
       return function (_x) {

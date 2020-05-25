@@ -30,7 +30,7 @@ export function loggerDecorator(target, name, descriptor) {
 
       console.info(
         `Calling ${target.constructor.name}.${name}: ${target} ,with: `,
-        ...args,
+        ...args
       )
 
       var ret = oldValue.apply(this, arguments)
@@ -39,13 +39,13 @@ export function loggerDecorator(target, name, descriptor) {
         ret.then((ret) => {
           console.info(
             `Return ${target.constructor.name}.${name}: ${target} ,with`,
-            ret,
+            ret
           )
         })
       } else {
         console.info(
           `Return ${target.constructor.name}.${name}: ${target} ,with`,
-          ret,
+          ret
         )
       }
 
@@ -79,6 +79,15 @@ export function importStyle(styleContent) {
     style.styleSheet.cssText = styleContent
   } else {
     style.appendChild(document.createTextNode(styleContent))
+  }
+}
+
+// 将dom的position修改为可相对定位的节点
+export function setDomAsOffsetParent(dom) {
+  var style = window.getComputedStyle(dom, null)
+  var set = new Set("absolute", "fixed", "relative", "sticky")
+  if (!set.has(style.position)) {
+    dom.style.position = "relative"
   }
 }
 
