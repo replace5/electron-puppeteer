@@ -4,3 +4,4 @@
  */
 import BrowserManager from "./BrowserManager.js"
 export default new BrowserManager()
+export {BrowserManager as Class}

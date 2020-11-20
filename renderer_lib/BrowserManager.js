@@ -8,10 +8,17 @@ var _Browser = require("./Browser.js");
 
 var _Browser2 = _interopRequireDefault(_Browser);
 
+var _KeyboardShortcuts = require("./KeyboardShortcuts.js");
+
+var _KeyboardShortcuts2 = _interopRequireDefault(_KeyboardShortcuts);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /**
  * @class BrowserManager
+ */
+/**
+ * @file BrowserManager类
  */
 class BrowserManager {
   /**
@@ -20,6 +27,8 @@ class BrowserManager {
    */
   constructor() {
     this._browsers = new Map();
+    // 快捷键
+    new _KeyboardShortcuts2.default(this);
   }
   /**
    * 打开浏览器
@@ -33,6 +42,17 @@ class BrowserManager {
     return this._browsers.size;
   }
   /**
+   * 获取最早打开的browser实例
+   */
+  getEarliest() {
+    let browsers = [];
+    this._browsers.forEach(item => {
+      browsers.push(item);
+    });
+
+    return browsers.sort((a, b) => a.startTime - b.startTime).shift();
+  }
+  /**
    * 通过browserId获取browser实例
    * @param {string} browserId browser.id
    */
@@ -43,7 +63,18 @@ class BrowserManager {
    * 获取当前最视窗最前端的browser实例，也就是激活的browser实例
    */
   frontBrowser() {
-    return this._browsers.find(item => item.isFront === true);
+    let front = null;
+    this._browsers.forEach(item => {
+      if (item.isFront === true) {
+        front = item;
+      }
+    });
+
+    return front;
+  }
+  frontPage() {
+    let browser = this.frontBrowser();
+    return browser && browser.frontPage();
   }
   /**
    * 删除browser，不可直接调用
@@ -70,6 +101,4 @@ class BrowserManager {
     });
   }
 }
-exports.default = BrowserManager; /**
-                                   * @file BrowserManager类
-                                   */
+exports.default = BrowserManager;

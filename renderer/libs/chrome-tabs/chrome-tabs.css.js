@@ -5,9 +5,10 @@ export default `
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   font-size: 12px;
   height: 46px;
-  padding: 8px 3px 4px 3px;
+  padding: 8px 40px 4px 14px;
   background: #dee1e6;
   border-radius: 5px 5px 0 0;
+  display: flex;
   overflow: hidden;
 }
 .chrome-tabs * {
@@ -16,28 +17,47 @@ export default `
 }
 .chrome-tabs .chrome-tabs-content {
   position: relative;
-  width: calc(100% - 100px);
   height: 100%;
+  flex: 1;
 }
-.chrome-tabs .chrome-tabs-content-add {
-  width: 28px;
-  line-height: 28px;
+.chrome-tabs .chrome-tabs-ctrl {
+  padding-left: 7px;
+  padding-right: 4px;
+  user-select: none;
+}
+.chrome-tabs .chrome-tabs-button-custom[active] {
+  background: #fff;
+}
+.chrome-tabs .chrome-tabs-button-add {
   position: absolute;
   top: 10px;
+  left: 0;
+  margin-left: 3px;
+  margin-right: 0;
+  background: #f2f2f2;
+}
+.chrome-tabs .chrome-tabs-button {
+  display: inline-block;
+  width: 28px;
+  line-height: 28px;
+  margin-right: 2px;
   text-align: center;
   font-size: 14px;
-  left: 0px;
   cursor: pointer;
   border-radius: 50%;
-  background: #f2f2f2;
   transition: color 0.5s linear, background 0.5s linear;
-
 }
-.chrome-tabs .chrome-tabs-content-add svg {
+.chrome-tabs .chrome-tabs-button[disabled] {
+  color: #aaa;
+}
+.chrome-tabs .chrome-tabs-button:last-child {
+  margin-right: 0;
+}
+.chrome-tabs .chrome-tabs-button svg {
   margin: 7px auto;
   vertical-align: top;
 }
-.chrome-tabs .chrome-tabs-content-add:hover {
+.chrome-tabs .chrome-tabs-button:not([disabled]):hover {
   color: #296aef;
   background: #fff;
 }
@@ -167,6 +187,7 @@ export default `
 .chrome-tabs .chrome-tab .chrome-tab-title {
   flex: 1;
   vertical-align: top;
+  line-height: 16px;
   overflow: hidden;
   white-space: nowrap;
   margin-left: 4px;

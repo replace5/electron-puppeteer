@@ -4,7 +4,7 @@
 
 import EventEmitter from "./EventEmitter.js"
 import USKeyboardLayout from "./USKeyboardLayout.js"
-import {uniqueId} from "./util.js"
+import {uniqueId, sleep} from "./util.js"
 
 /**
  * @class ElementHandle frame的dom操作句柄
@@ -121,14 +121,45 @@ export default class ElementHandle extends EventEmitter {
     return Promise.reject("todo")
   }
   /**
-   * getBoundingClientRect
+   * boundingBox
    *
    * @return {Promise<Object>}
    */
-  getBoundingClientRect() {
-    return this.ipc.send("elementHandle.getBoundingClientRect", {
-      selector: selector,
-      baseSelector: this.baseSelector,
+  boundingBox() {
+    return this.ipc.send("elementHandle.boundingBox", {
+      selector: this._joinSelfSelector(),
+      // baseSelector: this.baseSelector,
+    })
+  }
+  /**
+   * offsetTop
+   *
+   * @return {Promise<Number>}
+   */
+  get offsetTop() {
+    return this.ipc.send("elementHandle.offsetTop", {
+      selector: this._joinSelfSelector(),
+    })
+  }
+  /**
+   * offsetTop
+   *
+   * @return {Promise<Number>}
+   */
+  get offsetLeft() {
+    return this.ipc.send("elementHandle.offsetLeft", {
+      selector: this._joinSelfSelector(),
+    })
+  }
+  /**
+   * 获取/设置节点文本
+   *
+   * @return {Promise<string>}
+   */
+  textContent(text) {
+    return this.ipc.send("elementHandle.textContent", {
+      selector: this._joinSelfSelector(),
+      text: text,
     })
   }
   /**
@@ -147,6 +178,25 @@ export default class ElementHandle extends EventEmitter {
     return this.ipc.send("elementHandle.click", {
       selector: this._joinSelfSelector(),
       options,
+    })
+  }
+  /**
+   * 显示当前节点
+   * @param {object} options 配置选项
+   * @param {string} [options.display] 要设置的display值，默认为block
+   */
+  show(options) {
+    return this.ipc.send("elementHandle.show", {
+      selector: this._joinSelfSelector(),
+      options: options,
+    })
+  }
+  /**
+   * 隐藏当前节点
+   */
+  hide() {
+    return this.ipc.send("elementHandle.hide", {
+      selector: this._joinSelfSelector(),
     })
   }
   /**
@@ -292,20 +342,16 @@ export default class ElementHandle extends EventEmitter {
   }
   /**
    * 键入文本
-   * @param {string} text 输入的文本内容, 暂时只支持单字符输入，即英文字母等
+   * @param {string} text 输入的文本内容
    * @param {*} options 暂不支持
    */
   // todo: 暂不支持options
-  // todo： 暂只支持文字输入、Backspace、Enter
   press(text, options) {
     var key = USKeyboardLayout[text]
-    if (!key) {
-      return Promise.reject("key not define")
-    }
 
     return this.ipc.send("elementHandle.press", {
       selector: this._joinSelfSelector(),
-      keyCode: key.keyCode,
+      keyCode: (key && key.keyCode) || 0,
       text: text,
       options: options,
     })
@@ -329,10 +375,17 @@ export default class ElementHandle extends EventEmitter {
     return Promise.reject("todo")
   }
   /**
-   * todo
+   * 输入文字
+   * @param {string} text 输入的文本内容
+   * @param {Object} options 选项
+   * @param {number} [options.delay] 输入间隔
    */
-  type(/* text, options */) {
-    return Promise.reject("todo")
+  async type(text, options) {
+    for (let i = 0; i < text.length; i++) {
+      await this.press(text.charAt(i))
+      await sleep(options && options.delay)
+    }
+    return true
   }
   /**
    * todo

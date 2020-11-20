@@ -2,6 +2,7 @@
  * @file BrowserManager类
  */
 import Browser from "./Browser.js"
+import KeyboardShortcuts from "./KeyboardShortcuts.js"
 
 /**
  * @class BrowserManager
@@ -13,6 +14,8 @@ export default class BrowserManager {
    */
   constructor() {
     this._browsers = new Map()
+    // 快捷键
+    new KeyboardShortcuts(this)
   }
   /**
    * 打开浏览器
@@ -28,6 +31,17 @@ export default class BrowserManager {
     return this._browsers.size
   }
   /**
+   * 获取最早打开的browser实例
+   */
+  getEarliest() {
+    let browsers = []
+    this._browsers.forEach((item) => {
+      browsers.push(item)
+    })
+
+    return browsers.sort((a, b) => a.startTime - b.startTime).shift()
+  }
+  /**
    * 通过browserId获取browser实例
    * @param {string} browserId browser.id
    */
@@ -38,7 +52,18 @@ export default class BrowserManager {
    * 获取当前最视窗最前端的browser实例，也就是激活的browser实例
    */
   frontBrowser() {
-    return this._browsers.find((item) => item.isFront === true)
+    let front = null
+    this._browsers.forEach((item) => {
+      if (item.isFront === true) {
+        front = item
+      }
+    })
+
+    return front
+  }
+  frontPage() {
+    let browser = this.frontBrowser()
+    return browser && browser.frontPage()
   }
   /**
    * 删除browser，不可直接调用

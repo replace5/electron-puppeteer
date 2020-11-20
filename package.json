@@ -5,15 +5,15 @@
     "name": "replace5",
     "email": "feng524822@sina.com"
   },
-  "version": "1.0.8",
+  "version": "1.1.1",
   "main": "renderer_lib/index.js",
   "module": "renderer/index.js",
   "dependencies": {
     "@pixi/jsdoc-template": "^2.6.0",
+    "@replace5/electron-localshortcut": "^1.0.2",
     "draggabilly": "^2.2.0",
     "electron-context-menu": "^2.0.0",
-    "jsdoc-template": "^1.2.0",
-    "mousetrap": "^1.6.5"
+    "jsdoc-template": "^1.2.0"
   },
   "keywords": [
     "electron",

@@ -1,7 +1,7 @@
 import EventEmitter from "./EventEmitter.js"
 import ElementHandle from "./ElementHandle.js"
 import {BoundIpc} from "./ipc.js"
-import {TimeoutPromise, proxyBindDecorator} from "./util.js"
+import {isFunction, TimeoutPromise, proxyBindDecorator} from "./util.js"
 
 /**
  * @class Frame Frame类，webview的iframe，主页面是mainFrame
@@ -33,11 +33,13 @@ class Frame extends EventEmitter {
     super()
 
     this._frameInfo = frameInfo
+    this._url = frameInfo.url || ""
 
     this._page = page
     this.webview = webviewElement
     // webview的webContentsId
-    this.webContentsId = frameInfo.routingId
+    this.webContentsId = frameInfo.webContentsId
+    this.routingId = frameInfo.routingId
     this.isMainFrame = frameInfo.isMainFrame
     this.ipc = new BoundIpc(this.webview, frameInfo.UUID)
     this.document = new ElementHandle(this, "document", [])
@@ -45,6 +47,7 @@ class Frame extends EventEmitter {
     this._childFrames = []
     this._listenChildFramesRegister()
     this._listenChildFramesUnregister()
+    this._listenFrameContentEvents()
   }
   // 监听当前frame下子iframe的注册事件
   _listenChildFramesRegister() {
@@ -67,6 +70,19 @@ class Frame extends EventEmitter {
       )
     })
   }
+  _listenFrameContentEvents() {
+    this.ipc.on("frame.event", (payload) => {
+      /**
+       * frame dom 事件
+       * @event Page#dom-event
+       * @type {Object}
+       * @property {string} type 事件类型
+       * @property {Object} event 事件对象的部分属性
+       * @property {Object} target event.taget.target的部分属性
+       */
+      this.emit("dom-event", payload)
+    })
+  }
   /**
    * 注入一个指定url或(content)的script标签到页面
    * @param {Object} options
@@ -83,8 +99,10 @@ class Frame extends EventEmitter {
   /**
    * 注入一个link(url)或style(content)标签到页面
    * @param {Object} options
+   * @property {string} [options.id] 样式的id，相同id的style不会重复添加到页面
    * @property {string} [options.url] 要添加的css link的src
    * @property {string} [options.content] 要注入页面的style代码
+   * @property {boolean} [options.force] 在id相同时强制重新添加style到页面
    *
    * @return {Promise<ElementHandle>} 返回注入样式的dom句柄实例
    */
@@ -116,15 +134,24 @@ class Frame extends EventEmitter {
    * 在frame运行指定函数
    * @param {Function} pageFunction
    * @param {string[]|number[]} args 传给pageFunction的参数
-   * @param {number} [timeout]  等待超时时间
+   * @param {number|Object} [options]  等待超时时间
    *
    * @return {Promise<*>} 返回运行结果，若pageFunction返回Promise，会等待Promise的resolve结果
    */
-  evaluate(pageFunction, args, timeout) {
+  evaluate(pageFunction, args, options) {
     if (!Array.isArray(args)) {
-      timeout = args
+      options = args
       args = []
     }
+    let retry = 0
+    let timeout = options
+    let name = ""
+    if (Object.prototype.toString.call(options) === "[object Object]") {
+      retry = options.retry || 0
+      timeout = options.timeout
+      name = options.name
+    }
+    timeout = timeout || 1e4
 
     if (typeof pageFunction == "string") {
       pageFunction = "function() {return " + pageFunction + "}"
@@ -132,8 +159,9 @@ class Frame extends EventEmitter {
 
     return this.ipc.send(
       "frame.evaluate",
-      {pageFunction: pageFunction.toString(), args: args},
-      timeout
+      {pageFunction: pageFunction.toString(), args: args, name: name},
+      timeout,
+      retry
     )
   }
   /**
@@ -141,8 +169,10 @@ class Frame extends EventEmitter {
    * 会在超时时间内追踪重定向，直到跳转到最终页面
    * @param {string} url
    * @param {Object} [options]
-   * @property {string} [options.waitUntil] 认定跳转成功的事件类型 load|domcontentloaded，默认为domcontentloaded
+   * @property {string} [options.waitUntil] 认定跳转成功的事件类型 load|domcontentloaded|hashchange|historyNavigation，默认为domcontentloaded
+   * @property {boolean} [options.reload] 刷新
    * @property {number} [options.timeout] 超时时间，单位为ms，默认为10000ms
+   * @property {number} [options.retry] 重试次数，默认不重试, 重试仅在发送超时的情况
    *
    * @return {Promise<undefined>}
    */
@@ -170,17 +200,32 @@ class Frame extends EventEmitter {
 
     await this.ipc.send("frame.goto", {
       url: url,
+      reload: options && options.reload,
     })
 
     return new TimeoutPromise((resolve) => {
       this.ipc.on("frame.goto." + waitUntil, (payload) => {
-        if (payload.url === redirectURL) {
+        if (
+          (redirectURL.startsWith("/") && payload.relative === redirectURL) ||
+          (redirectURL.startsWith("?") && payload.query === redirectURL) ||
+          (redirectURL.startsWith("#") &&
+            (payload.hash === redirectURL ||
+              payload.hash.split("?").shift())) ||
+          payload.url === redirectURL
+        ) {
           resolve(payload)
         }
       })
     }, timeout).catch((err) => {
       if (err === "promise.timeout") {
-        return Promise.reject("goto.timeout")
+        if (!options || !options.retry || options.retry <= 0) {
+          return Promise.reject("goto.timeout")
+        } else {
+          return this.goto(url, {
+            ...options,
+            retry: options.retry - 1,
+          })
+        }
       }
       return Promise.reject(err)
     })
@@ -248,16 +293,23 @@ class Frame extends EventEmitter {
     return this.ipc.send("frame.title")
   }
   /**
-   * todo
-   * 未实现，请使用press方法
    * 输入指定内容
    * @param {string} selector 要输入的dom的选择，input或textarea
    * @param {string} text 输入的文本
    * @param {Object} [options]
-   * @property {number} [options.delay] // 延迟输入, 操作更像用户
+   * @property {number} [options.delay] 延迟输入, 操作更像用户
    */
   type(selector, text, options) {
-    return this.ipc.send("frame.type", {selector, text, options})
+    return this.document.$(selector).type(text, options)
+  }
+  /**
+   * 输入指定内容
+   * @param {string} selector 要输入的dom的选择，input或textarea
+   * @param {string} press 输入的文本
+   * @param {Object} [options]
+   */
+  press(selector, text, options) {
+    return this.document.$(selector).press(text, options)
   }
   /**
    * 获取url，如果是mainFrame为当前url，如果是iframe，则是src属性
@@ -265,11 +317,15 @@ class Frame extends EventEmitter {
    * @return {string}
    */
   url() {
+    let url
     if (this.isMainFrame) {
-      return this.webview.getURL()
+      try {
+        if (!this.webview.isCrashed()) {
+          url = this.webview.getURL()
+        }
+      } catch {}
     }
-
-    return this._frameInfo.url
+    return url || this._frameInfo.url
   }
   /**
    * waitForSelector|waitForFunction|setTimeout的结合体
@@ -293,6 +349,7 @@ class Frame extends EventEmitter {
    * @param {Function} pageFunction
    * @param {Object} [options]
    * @property {number} [options.timeout] 等待时间
+   * @property {number} [options.retry] 重试次数，默认不重试, 重试仅在发送超时的情况
    * @param  {...any} args
    *
    * @return {Promise<boolean>} 成功返回resove(true)，超时返回reject
@@ -302,16 +359,21 @@ class Frame extends EventEmitter {
       pageFunction = "function() {return " + pageFunction + "}"
     }
 
-    return this.ipc.send("frame.waitForFunction", {
-      pageFunction: pageFunction.toString(),
-      args: args,
-      options,
-    })
+    return this.ipc.send(
+      "frame.waitForFunction",
+      {
+        pageFunction: pageFunction.toString(),
+        args: args,
+        options,
+      },
+      options && options.timeout,
+      options && options.retry
+    )
   }
   /**
    * 等待跳转完成
    * @param {Object} [options]
-   * @property {string} [options.waitUntil] 认定跳转成功的事件类型 load|domcontentloaded，默认为domcontentloaded
+   * @property {string} [options.waitUntil] 认定跳转成功的事件类型 load|domcontentloaded|historyNavigation，默认为domcontentloaded
    * @property {number} [options.timeout] 超时时间，单位为ms，默认为10000ms
    *
    * @return {Promise<Object>} 返回跳转后frame的信息
@@ -330,11 +392,81 @@ class Frame extends EventEmitter {
     })
   }
   /**
+   * 等待url跳出，不会等待跳转的页面的加载事件
+   * @param {Object} [options]
+   * @property {string|Function} [options.url] 要跳出的url|检查当前url和跳出url是否匹配的函数
+   * @property {number} [options.timeout] 超时时间，单位为ms，默认为10000ms
+   *
+   * @return {Promise<boolean>}
+   */
+  waitForNavigationOut(options) {
+    if (!options || !options.url) {
+      return Promise.reject("options.url cannot empty")
+    }
+
+    let timeout = options.timeout || 1e4
+    return Promise.race([
+      this.waitForNavigation({
+        timeout: timeout,
+      }),
+      new Promise((resolve, reject) => {
+        let start = Date.now()
+        let t = setInterval(() => {
+          if (Date.now() - start >= timeout) {
+            clearInterval(t)
+            reject("waitForNavigationOut.timeout")
+          }
+
+          if (
+            (isFunction(options.url) && !options.url(this.url())) ||
+            !this.url().startsWith(options.url)
+          ) {
+            clearInterval(t)
+            resolve(true)
+          }
+        }, 100)
+      }),
+    ])
+  }
+  /**
+   * 等待url跳入，不会等待跳入页面的加载事件
+   * @param {Object} [options]
+   * @property {string|Function} [options.url] 要跳入的url|检查当前url和跳入url是否匹配的函数
+   * @property {number} [options.timeout] 超时时间，单位为ms，默认为10000ms
+   *
+   * @return {Promise<boolean>}
+   */
+  waitForNavigationTo(options) {
+    if (!options || !options.url) {
+      return Promise.reject("options.url cannot empty")
+    }
+
+    let timeout = options.timeout || 1e4
+    return new Promise((resolve, reject) => {
+      let start = Date.now()
+      let t = this.setInterval(() => {
+        if (Date.now() - start >= timeout) {
+          clearInterval(t)
+          reject("waitForNavigationTo.timeout")
+        }
+
+        if (
+          (isFunction(options.url) && options.url(this.url())) ||
+          this.url().startsWith(options.url)
+        ) {
+          clearInterval(t)
+          resolve(true)
+        }
+      }, 100)
+    })
+  }
+  /**
    * 在指定时间内轮询查询dom节点，直到查找到节点
    * @param {string} selector dom节点选择器
    * @param {Object} [options]
    * @property {boolean} [options.visible] 节点是否可见，如果visible为true时必须查到到dom节点且可见才会返回true
    * @property {number} [options.timeout] 超时时间，单位为ms，默认为10000ms
+   * @property {number} [options.retry] 重试次数，默认不重试, 重试仅在发送超时的情况
    *
    * @return {Promise<undefined>} 成功则resolve，失败返回reject
    */
@@ -345,7 +477,21 @@ class Frame extends EventEmitter {
         selector: selector,
         options: options,
       },
-      options && options.timeout
+      options && options.timeout,
+      options && options.retry
+    )
+  }
+  /**
+   * 在指定时间内轮询查询dom节点，查找到节点返回true，否则返回false
+   * @param {string} selector dom节点选择器
+   * @param {Object} options 和waitForSelector的options相同
+   *
+   * @return {Promise<boolean>}
+   */
+  hasElement(selector, options) {
+    return this.waitForSelector(selector, options).then(
+      () => true,
+      () => false
     )
   }
   /**
@@ -404,7 +550,7 @@ class Frame extends EventEmitter {
    * 获取localStorage的所有key集合
    */
   localStorageKeys() {
-    return this.ipc.send("frame.localStorageKeys")
+    return this.ipc.send("frame.localStorageKeys", null, 1e4, 2)
   }
   /**
    * localStorage.getItem
@@ -413,9 +559,14 @@ class Frame extends EventEmitter {
    * @return {Promise<string>}
    */
   localStorageGet(key) {
-    return this.ipc.send("frame.localStorageGet", {
-      key: key,
-    })
+    return this.ipc.send(
+      "frame.localStorageGet",
+      {
+        key: key,
+      },
+      1e4,
+      2
+    )
   }
   /**
    * localStorage.setItem
@@ -425,10 +576,15 @@ class Frame extends EventEmitter {
    * @return {Promise<undefined>}
    */
   localStorageSet(key, value) {
-    return this.ipc.send("frame.localStorageSet", {
-      key: key,
-      value: value,
-    })
+    return this.ipc.send(
+      "frame.localStorageSet",
+      {
+        key: key,
+        value: value,
+      },
+      1e4,
+      2
+    )
   }
   /**
    * localStorage.removeItem
@@ -437,9 +593,14 @@ class Frame extends EventEmitter {
    * @return {Promise<undefined>}
    */
   localStorageRemove(key) {
-    return this.ipc.send("frame.localStorageRemove", {
-      key: key,
-    })
+    return this.ipc.send(
+      "frame.localStorageRemove",
+      {
+        key: key,
+      },
+      1e4,
+      2
+    )
   }
 }
 

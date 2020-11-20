@@ -1,4 +1,7 @@
+import {isElementInViewport} from "../../util.js"
+
 const Draggabilly = require("draggabilly")
+const TAB_ADD_BUTTON_FIXSIZE = 10
 const TAB_CONTENT_MARGIN = 9
 const TAB_CONTENT_OVERLAP_DISTANCE = 1
 
@@ -84,8 +87,10 @@ class ChromeTabs {
 
   setupEvents() {
     window.addEventListener("resize", () => {
-      this.cleanUpPreviouslyDraggedTabs()
-      this.layoutTabs()
+      if (isElementInViewport(this.el)) {
+        this.cleanUpPreviouslyDraggedTabs()
+        this.layoutTabs()
+      }
     })
 
     // this.el.addEventListener("dblclick", (event) => {
@@ -105,8 +110,12 @@ class ChromeTabs {
     return this.el.querySelector(".chrome-tabs-content")
   }
 
-  get tabContentElAdd() {
-    return this.el.querySelector(".chrome-tabs-content-add")
+  get tabButtonAddEl() {
+    return this.el.querySelector(".chrome-tabs-button-add")
+  }
+
+  get tabCtrlEl() {
+    return this.el.querySelector(".chrome-tabs-ctrl")
   }
 
   get tabContentWidths() {
@@ -201,11 +210,17 @@ class ChromeTabs {
       `
     })
 
-    let tabContentElAddLeft = tabContentWidthsCount + 2 * TAB_CONTENT_MARGIN
-    if (tabContentElAddLeft > this.tabContentEl.clientWidth) {
-      tabContentElAddLeft = this.tabContentEl.clientWidth
+    let tabButtonAddElLeft =
+      tabContentWidthsCount + TAB_CONTENT_MARGIN * 2 + TAB_ADD_BUTTON_FIXSIZE
+    if (
+      tabButtonAddElLeft >
+      this.tabContentEl.clientWidth + TAB_ADD_BUTTON_FIXSIZE
+    ) {
+      tabButtonAddElLeft =
+        this.tabContentEl.clientWidth + TAB_ADD_BUTTON_FIXSIZE
     }
-    this.tabContentElAdd.style.left = tabContentElAddLeft + "px"
+    this.tabButtonAddEl.style.left =
+      this.tabCtrlEl.clientWidth + tabButtonAddElLeft + "px"
     this.styleEl.innerHTML = styleHTML
   }
 
@@ -275,7 +290,9 @@ class ChromeTabs {
 
   updateTab(tabEl, tabProperties) {
     if (tabProperties.title) {
-      tabEl.querySelector(".chrome-tab-title").textContent = tabProperties.title
+      let titleEl = tabEl.querySelector(".chrome-tab-title")
+      titleEl.textContent = tabProperties.title
+      titleEl.parentNode.title = `${tabProperties.title}\n${tabProperties.url}`
     }
 
     const faviconEl = tabEl.querySelector(".chrome-tab-favicon")

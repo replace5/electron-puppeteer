@@ -16,6 +16,10 @@ var _util = require("./util.js");
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
+function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; } /**
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                            * @file ElementHandle类
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                            */
+
 /**
  * @class ElementHandle frame的dom操作句柄
  * @extends EventEmitter
@@ -125,14 +129,45 @@ class ElementHandle extends _EventEmitter2.default {
     return Promise.reject("todo");
   }
   /**
-   * getBoundingClientRect
+   * boundingBox
    *
    * @return {Promise<Object>}
    */
-  getBoundingClientRect() {
-    return this.ipc.send("elementHandle.getBoundingClientRect", {
-      selector: selector,
-      baseSelector: this.baseSelector
+  boundingBox() {
+    return this.ipc.send("elementHandle.boundingBox", {
+      selector: this._joinSelfSelector()
+      // baseSelector: this.baseSelector,
+    });
+  }
+  /**
+   * offsetTop
+   *
+   * @return {Promise<Number>}
+   */
+  get offsetTop() {
+    return this.ipc.send("elementHandle.offsetTop", {
+      selector: this._joinSelfSelector()
+    });
+  }
+  /**
+   * offsetTop
+   *
+   * @return {Promise<Number>}
+   */
+  get offsetLeft() {
+    return this.ipc.send("elementHandle.offsetLeft", {
+      selector: this._joinSelfSelector()
+    });
+  }
+  /**
+   * 获取/设置节点文本
+   *
+   * @return {Promise<string>}
+   */
+  textContent(text) {
+    return this.ipc.send("elementHandle.textContent", {
+      selector: this._joinSelfSelector(),
+      text: text
     });
   }
   /**
@@ -151,6 +186,25 @@ class ElementHandle extends _EventEmitter2.default {
     return this.ipc.send("elementHandle.click", {
       selector: this._joinSelfSelector(),
       options
+    });
+  }
+  /**
+   * 显示当前节点
+   * @param {object} options 配置选项
+   * @param {string} [options.display] 要设置的display值，默认为block
+   */
+  show(options) {
+    return this.ipc.send("elementHandle.show", {
+      selector: this._joinSelfSelector(),
+      options: options
+    });
+  }
+  /**
+   * 隐藏当前节点
+   */
+  hide() {
+    return this.ipc.send("elementHandle.hide", {
+      selector: this._joinSelfSelector()
     });
   }
   /**
@@ -292,20 +346,16 @@ class ElementHandle extends _EventEmitter2.default {
   }
   /**
    * 键入文本
-   * @param {string} text 输入的文本内容, 暂时只支持单字符输入，即英文字母等
+   * @param {string} text 输入的文本内容
    * @param {*} options 暂不支持
    */
   // todo: 暂不支持options
-  // todo： 暂只支持文字输入、Backspace、Enter
   press(text, options) {
     var key = _USKeyboardLayout2.default[text];
-    if (!key) {
-      return Promise.reject("key not define");
-    }
 
     return this.ipc.send("elementHandle.press", {
       selector: this._joinSelfSelector(),
-      keyCode: key.keyCode,
+      keyCode: key && key.keyCode || 0,
       text: text,
       options: options
     });
@@ -329,10 +379,21 @@ class ElementHandle extends _EventEmitter2.default {
     return Promise.reject("todo");
   }
   /**
-   * todo
+   * 输入文字
+   * @param {string} text 输入的文本内容
+   * @param {Object} options 选项
+   * @param {number} [options.delay] 输入间隔
    */
-  type() /* text, options */{
-    return Promise.reject("todo");
+  type(text, options) {
+    var _this = this;
+
+    return _asyncToGenerator(function* () {
+      for (let i = 0; i < text.length; i++) {
+        yield _this.press(text.charAt(i));
+        yield (0, _util.sleep)(options && options.delay);
+      }
+      return true;
+    })();
   }
   /**
    * todo
@@ -341,6 +402,4 @@ class ElementHandle extends _EventEmitter2.default {
     return Promise.reject("todo");
   }
 }
-exports.default = ElementHandle; /**
-                                  * @file ElementHandle类
-                                  */
+exports.default = ElementHandle;

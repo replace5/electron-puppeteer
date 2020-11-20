@@ -1,6 +1,25 @@
 /**
  * @file util
  */
+export function isString(a) {
+  return Object.prototype.toString.call(a) === "[object String]"
+}
+
+export function isFunction(a) {
+  return Object.prototype.toString.call(a) === "[object Function]"
+}
+
+export function isArray(a) {
+  return Object.prototype.toString.call(a) === "[object Array]"
+}
+
+export function isObject(a) {
+  return Object.prototype.toString.call(a) === "[object Object]"
+}
+
+export function isRegExp(a) {
+  return Object.prototype.toString.call(a) === "[object RegExp]"
+}
 
 export function uniqueId(prefix) {
   return (
@@ -8,6 +27,14 @@ export function uniqueId(prefix) {
     Math.random().toString(32).substr(1) +
     Date.now().toString(32)
   )
+}
+
+export function sleep(time) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve(true)
+    }, time)
+  })
 }
 
 export function loggerDecorator(target, name, descriptor) {
@@ -71,9 +98,16 @@ export function proxyBindDecorator(proxyMethods, proxierGetFn) {
 }
 
 // 插入style节点
-export function importStyle(styleContent) {
+export function importStyle(styleContent, id) {
+  if (id && document.getElementById(id)) {
+    return
+  }
+
   var style = document.createElement("style")
   style.type = "text/css"
+  if (id) {
+    style.id = id
+  }
   document.getElementsByTagName("head")[0].appendChild(style)
   if (style.styleSheet) {
     style.styleSheet.cssText = styleContent
@@ -143,10 +177,46 @@ export function TimeoutPromise(fn, timeout) {
   })
 }
 
+export function parseStrToDOM(str) {
+  let tmp = document.createElement("div")
+  tmp.innerHTML = str.trim()
+  const childNodes = tmp.childNodes
+  return childNodes.length === 1 ? childNodes[0] : childNodes
+}
+
+export function debounce(fn, wait = 1e3) {
+  let timeoutID
+  return function (...argv) {
+    if (timeoutID) {
+      clearTimeout(timeoutID)
+    }
+    timeoutID = setTimeout(() => {
+      fn.apply(this, argv)
+    }, wait)
+  }
+}
+
+export function isElementInViewport(el) {
+  var rect = el.getBoundingClientRect()
+
+  return (
+    rect.top >= 0 &&
+    rect.left >= 0 &&
+    rect.bottom <=
+      (window.innerHeight || document.documentElement.clientHeight) &&
+    rect.right <= (window.innerWidth || document.documentElement.clientWidth) &&
+    rect.width > 0 &&
+    rect.height > 0
+  )
+}
+
 export default {
   uniqueId,
   loggerDecorator,
   proxyBindDecorator,
   importStyle,
   TimeoutPromise,
+  parseStrToDOM,
+  debounce,
+  isElementInViewport,
 }

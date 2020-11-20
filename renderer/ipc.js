@@ -13,6 +13,8 @@ const SEND_NAME = "electron-puppeteer_r2p"
 const RECEIVE_NAME = "electron-puppeteer_p2r"
 // ack prefix
 const ACK_PREFIX = "ack_r2p_"
+// browserWindow connect
+export const BROWSER_WINDOW_PAGE_CONNECT = "electron-puppeteer_page_connect"
 
 /**
  * @class Ipc
@@ -55,61 +57,7 @@ export default class Ipc {
       if (originalEvent.channel === RECEIVE_NAME) {
         let evt = originalEvent.args[0]
         evt.originalEvent = originalEvent
-
-        if (evt.isAck) {
-          isDevelopment &&
-            ipcLog &&
-            console.log(
-              "%cipc ack",
-              "font-weight:bold;color:green;",
-              `name: ${evt.name},`,
-              `UUID: ${evt.UUID},`,
-              `payload: ${JSON.stringify(evt.payload)}`
-            )
-        } else {
-          isDevelopment &&
-            ipcLog &&
-            console.log(
-              "%cipc receive",
-              "font-weight:bold;color:darkCyan;",
-              `name: ${evt.name},`,
-              `ack: ${evt.ack},`,
-              `UUID: ${evt.UUID},`,
-              `payload: ${JSON.stringify(evt.payload)}`
-            )
-        }
-
-        if (!evt.isAck && evt.UUID !== "*") {
-          this._routingIdMaps.set(evt.UUID, evt.routingId)
-        }
-
-        let results = []
-        for (let i = 0; i < this._listeners.length; i++) {
-          let item = this._listeners[i]
-          if (
-            (item.UUID === "*" || item.UUID === evt.UUID) &&
-            item.name === evt.name &&
-            !!item.isAck === !!evt.isAck
-          ) {
-            let once = item.isAck || item.once
-            results.push(item.listener.call(this.webview, evt.payload, evt))
-            if (once) {
-              this._listeners.splice(i--, 1)
-            }
-            // ack是唯一的，无需往后匹配
-            if (item.isAck) {
-              break
-            }
-          }
-        }
-
-        // reply
-        // 没有ack则认为不需要回复
-        if (!evt.isAck && evt.ack) {
-          Promise.all(results).then((results) => {
-            this._sendAck(evt.UUID, evt.ack, results.shift(), evt.isMainFrame)
-          })
-        }
+        this._handleMessageEvent(evt)
       }
     })
 
@@ -122,14 +70,18 @@ export default class Ipc {
         console.warn("%cipc hold", "font-weight:bold;", this.webview)
     })
 
+    const onRecover = () => {
+      if (this._hold) {
+        isDevelopment &&
+          ipcLog &&
+          console.warn("%cipc recover", "font-weight:bold;", this.webview)
+        this._hold = false
+        this._runHoldTasks()
+      }
+    }
+
     // 页面ready后重新发送消息
-    this.webview.addEventListener("dom-ready", () => {
-      isDevelopment &&
-        ipcLog &&
-        console.warn("%cipc recover", "font-weight:bold;", this.webview)
-      this._hold = false
-      this._runHoldTasks()
-    })
+    this.webview.addEventListener("dom-ready", onRecover)
 
     this.webview.addEventListener("close", () => {
       this._destroyed = true
@@ -138,16 +90,96 @@ export default class Ipc {
       this._destroyed = true
     })
   }
+  _handleMessageEvent(evt) {
+    if (evt.isAck) {
+      isDevelopment &&
+        ipcLog &&
+        console.log(
+          "%cipc ack",
+          "font-weight:bold;color:green;",
+          `name: ${evt.name},`,
+          `UUID: ${evt.UUID},`,
+          `payload: ${JSON.stringify(evt.payload)}`
+        )
+    } else {
+      isDevelopment &&
+        ipcLog &&
+        console.log(
+          "%cipc receive",
+          "font-weight:bold;color:darkCyan;",
+          `name: ${evt.name},`,
+          `ack: ${evt.ack},`,
+          `UUID: ${evt.UUID},`,
+          `payload: ${JSON.stringify(evt.payload)}`
+        )
+    }
+
+    if (!evt.isAck && evt.UUID !== "*") {
+      this._routingIdMaps.set(evt.UUID, evt.routingId)
+    }
+
+    let results = []
+    for (let i = 0; i < this._listeners.length; i++) {
+      let item = this._listeners[i]
+      if (
+        (item.UUID === "*" || item.UUID === evt.UUID) &&
+        [].concat(item.name).indexOf(evt.name) > -1 &&
+        !!item.isAck === !!evt.isAck
+      ) {
+        let once = item.isAck || item.once
+        results.push(
+          item.listener.call(this.webview, evt.payload, evt, evt.error)
+        )
+        if (once) {
+          this._listeners.splice(i--, 1)
+        }
+        // ack是唯一的，无需往后匹配
+        if (item.isAck) {
+          break
+        }
+      }
+    }
+
+    // reply
+    // 没有ack则认为不需要回复
+    if (!evt.isAck && evt.ack) {
+      Promise.race(results.slice(0, 1)).then(
+        (result) => {
+          this._sendAck(evt.UUID, evt.ack, null, result, evt.isMainFrame)
+        },
+        (err) => {
+          this._sendAck(
+            evt.UUID,
+            evt.ack,
+            (err && err.toString()) || "-",
+            null,
+            evt.isMainFrame
+          )
+        }
+      )
+    }
+
+    return results
+  }
   _runHoldTasks() {
     while (this._holdTasks.length) {
       let task = this._holdTasks.shift()
       if (task.isAck) {
-        this._sendAck(task.UUID, task.name, task.payload, task.isMainFrame)
-      } else {
-        this.send(task.UUID, task.name, task.payload, task.timeout).then(
-          task.resolve,
-          task.reject
+        this._sendAck(
+          task.UUID,
+          task.name,
+          task.error,
+          task.payload,
+          task.isMainFrame
         )
+      } else {
+        this.send(
+          task.UUID,
+          task.name,
+          task.payload,
+          task.timeout,
+          task.retry
+        ).then(task.resolve, task.reject)
       }
     }
   }
@@ -155,7 +187,7 @@ export default class Ipc {
   _generatorAckName(name) {
     return util.uniqueId(ACK_PREFIX + name + "_")
   }
-  _sendAck(UUID, ack, result, isMainFrame) {
+  _sendAck(UUID, ack, err, payload, isMainFrame) {
     if (this._destroyed) {
       return false
     }
@@ -164,7 +196,8 @@ export default class Ipc {
         UUID,
         name: ack,
         isAck: true,
-        payload: result,
+        error: err,
+        payload: payload,
         isMainFrame: isMainFrame,
       })
     } else {
@@ -175,7 +208,7 @@ export default class Ipc {
           "font-weight:bold;color:#c59519",
           `name: ${ack},`,
           `UUID: ${UUID},`,
-          `result: ${JSON.stringify(result)}`
+          `result: ${JSON.stringify(payload)}`
         )
 
       let sender = this._getSender(UUID)
@@ -185,16 +218,24 @@ export default class Ipc {
             UUID,
             name: ack,
             ack: "",
+            error: err,
             isAck: true,
-            payload: result,
+            payload: payload,
             isMainFrame: isMainFrame,
           })
         } catch (e) {}
       }
     }
   }
+  _isWebviewInDocument() {
+    return (
+      (this.webview.isDestroyed && !this.webview.isDestroyed()) ||
+      (this.webview.ownerDocument &&
+        this.webview.ownerDocument.contains(this.webview))
+    )
+  }
   _getSender(UUID) {
-    if (!this.webview.ownerDocument.contains(this.webview)) {
+    if (!this._isWebviewInDocument()) {
       return null
     }
 
@@ -234,16 +275,19 @@ export default class Ipc {
    * @param {string|string[]} name 消息名, 支持合并发送payload相同的消息
    * @param {Object} payload 传输数据
    * @param {number} timeout 等待回复时间
+   * @param {number} retry 重试次数，默认不重试，仅在超时的情况才会重试
    *
    * @return {Promise<IpcEvent>} 返回promise，等待消息回复内容
    */
-  send(UUID, name, payload, timeout) {
+  send(UUID, name, payload, timeout, retry) {
     if (this._destroyed) {
       return Promise.reject("ipc webview destroyed")
     }
 
     if (Array.isArray(name)) {
-      return Promise.all(name.map((item) => this.send(item, payload, timeout)))
+      return Promise.all(
+        name.map((item) => this.send(item, payload, timeout, retry))
+      )
     }
 
     if (this._hold) {
@@ -255,6 +299,7 @@ export default class Ipc {
           name,
           payload,
           timeout,
+          retry,
           isAck: false,
         })
       })
@@ -265,8 +310,11 @@ export default class Ipc {
 
     return new Promise((resolve, reject) => {
       // 收到回执信息，触发回调
-      let onAck = (result) => {
+      let onAck = (result, evt) => {
         window.clearTimeout(timer)
+        if (evt.error) {
+          return reject(evt.error)
+        }
         resolve(result)
       }
       // 放入监听队列
@@ -280,12 +328,14 @@ export default class Ipc {
       // 超时判断
       let timer = window.setTimeout(() => {
         this.off(UUID, ack, onAck)
-        reject(
-          `ipc.timeout.send: ${name}@${UUID}, payload: ${JSON.stringify(
-            payload
-          )}`
-        )
+        let payloadString = JSON.stringify(payload)
+        if (payloadString.length > 200) {
+          payloadString = payloadString.substr(0, 200) + "..."
+        }
+        reject(`ipc.timeout.send: ${name}@${UUID}, payload: ${payloadString}`)
       }, timeout)
+
+      retry = retry || 0
 
       isDevelopment &&
         ipcLog &&
@@ -323,7 +373,11 @@ export default class Ipc {
             `payload: ${JSON.stringify(payload)}`
           )
       } else {
-        console.error("ipc send error:", err)
+        // console.error("ipc send error:", err)
+      }
+
+      if (--retry >= 0) {
+        return this.send(UUID, name, payload, timeout, retry)
       }
 
       return Promise.reject(err)
@@ -344,13 +398,18 @@ export default class Ipc {
   /**
    * 监听webview内iframe消息
    * @param {string} UUID 消息来源iframe的UUID, mainFrame为～，任意frame为*
-   * @param {string} name 消息名
+   * @param {string|string[]} name 消息名
    * @param {IpcListener} listener 响应函数
+   * @param {boolean} unique 同名消息只绑定一次, 再次绑定时会取消前一次的绑定
    *
    * @return {Ipc} this
    *
    */
-  on(UUID, name, listener) {
+  on(UUID, name, listener, unique) {
+    if (unique) {
+      this.off(UUID, name)
+    }
+
     this._listeners.push({
       UUID,
       name,
@@ -363,7 +422,7 @@ export default class Ipc {
   /**
    * 单次监听webview内的消息
    * @param {string} UUID iframe的UUID, mainFrame为～，任意frame为*
-   * @param {string} name 消息名
+   * @param {string|string[]} name 消息名
    * @param {IpcListener} listener 响应函数
    *
    * @return {Ipc} this
@@ -382,7 +441,7 @@ export default class Ipc {
   /**
    * 取消监听
    * @param {string} UUID iframe的UUID, mainFrame为～，任意frame为*
-   * @param {string} name 消息名
+   * @param {string|string[]} name 消息名
    * @param {IpcListener} [listener] 响应函数
    * @return {Ipc} this
    */
@@ -390,7 +449,7 @@ export default class Ipc {
     this._listeners = this._listeners.filter((item) => {
       if (
         item.UUID === UUID &&
-        item.name === name &&
+        item.name.toString() === name.toString() &&
         (!listener || item.listener === listener)
       ) {
         return false
@@ -398,6 +457,26 @@ export default class Ipc {
       return true
     })
     return this
+  }
+  /**
+   * 模拟触发消息
+   * @param {string} UUID iframe的UUID, mainFrame为～，任意frame为*
+   * @param {string} name 消息名
+   * @param {*} payload 消息参数
+   * @param {*} error 错误信息
+   * @return {*} 首个响应消息内容
+   */
+  dispatch(UUID, name, payload, error) {
+    let results = this._handleMessageEvent({
+      UUID,
+      name,
+      payload,
+      error,
+      isAck: false,
+      ack: false,
+    })
+
+    return results.slice(0, 1)
   }
 }
 
@@ -425,11 +504,12 @@ export class BoundIpc {
    * @param {string|string[]} name 消息名, 支持合并发送payload相同的消息
    * @param {Object} payload 传输数据
    * @param {number} timeout 等待回复时间
+   * @param {number} retry 重试次数，默认不重试，仅在超时的情况才会重试
    *
    * @return {Promise<IpcEvent>} 返回promise，等待消息回复内容
    */
-  send(name, payload, timeout) {
-    return this.executor.send(this.UUID, name, payload, timeout)
+  send(name, payload, timeout, retry) {
+    return this.executor.send(this.UUID, name, payload, timeout, retry)
   }
   /**
    * 当收到某消息时立即发送指定消息给发送方, 和ack不同
@@ -445,19 +525,20 @@ export class BoundIpc {
   }
   /**
    * 监听消息
-   * @param {string} name 消息名
+   * @param {string|string[]} name 消息名
    * @param {IpcListener} listener 响应函数
+   * @param {boolean} unique 同名消息只绑定一次, 再次绑定时会取消前一次的绑定
    *
    * @return {BoundIpc} this
    *
    */
-  on(name, listener) {
-    this.executor.on(this.UUID, name, listener)
+  on(name, listener, unique) {
+    this.executor.on(this.UUID, name, listener, unique)
     return this
   }
   /**
    * 单次监听webview内的消息
-   * @param {string} name 消息名
+   * @param {string|string[]} name 消息名
    * @param {IpcListener} listener 响应函数
    *
    * @return {BoundIpc} this
@@ -469,7 +550,7 @@ export class BoundIpc {
   }
   /**
    * 取消监听
-   * @param {string} name 消息名
+   * @param {string|string[]} name 消息名
    * @param {IpcListener} listener 响应函数
    *
    * @return {BoundIpc} this
@@ -479,116 +560,13 @@ export class BoundIpc {
     this.executor.off(this.UUID, name, listener)
     return this
   }
-}
-
-// 聚合Ipc，可以收发多个ipc的消息
-export class AggregateIpc {
-  constructor() {
-    this._ = new Set()
-    this._onStack = []
-    this._sendStack = []
-  }
   /**
-   * 添加ipc实例，添加之前的所有send会在添加时发送，on也会在add时监听
-   * @param {Ipc}} ipc ipc实例
-   * @return {AggregateIpc} this
-   */
-  add(ipc) {
-    this._.add(ipc)
-    this._onStack.forEach((item) => {
-      ipc.on(item[0], (payload, evt) => {
-        item[1].call(null, payload, evt, ipc)
-      })
-    })
-    this._sendStack.forEach((item) => {
-      ipc.send.apply(ipc, item)
-    })
-    return this
-  }
-  /**
-   * 删除ipc实例
-   * @param {Ipc}} ipc ipc实例
-   * @return {AggregateIpc} this
-   */
-  delete(ipc) {
-    this._.delete(ipc)
-    return this
-  }
-  /**
-   * 清空ipc实例
-   * @return {AggregateIpc} this
-   */
-  clear() {
-    this._.clear()
-    return this
-  }
-  /**
-   * 监听消息
+   * 手动触发消息
    * @param {string} name 消息名
-   * @param {IpcListener} listener 响应函数
-   *
-   * @return {AggregateIpc} this
-   *
+   * @param {*} payload 消息内容
+   * @param {*} error 错误信息
    */
-  on(name, listener) {
-    this._onStack.push([name, listener])
-    this._.forEach((ipc) => {
-      ipc.on(name, (payload, evt) => {
-        listener.call(null, payload, evt, ipc)
-      })
-    })
-    return this
-  }
-  /**
-   * 取消监听消息
-   * @param {string} name 消息名
-   * @param {IpcListener} [listener] 响应函数
-   *
-   * @return {AggregateIpc} this
-   *
-   */
-  off(name, listener) {
-    this._onStack = this._onStack.filter((item) => {
-      if (item[0] === name && (!listener || item[1] === listener)) {
-        return false
-      }
-      return true
-    })
-    this._.forEach((ipc) => {
-      ipc.off(name, listener)
-    })
-    return this
-  }
-  /**
-   * 发送消息
-   * @param {string} name 消息名
-   * @param {Object} payload 传输数据
-   *
-   * @return {AggregateIpc} this
-   *
-   */
-  send(name, payload) {
-    this._sendStack.push([name, payload])
-    this._.forEach((ipc) => {
-      ipc.send(name, payload)
-    })
-
-    return this
-  }
-  /**
-   * 当收到某消息时立即发送指定消息给发送方
-   * @param {string} trigger 触发的消息名
-   * @param {string} name 消息名
-   * @param {Object} payload 传输数据
-   *
-   * @return {AggregateIpc} this
-   */
-  sendOn(trigger, name, payload) {
-    this.on(trigger, (data, evt, ipc) => {
-      console.log("sendOn", trigger, name, payload)
-      ipc.send(name, payload)
-    })
-
-    return this
+  dispatch(name, payload, error) {
+    return this.executor.dispatch(this.UUID, name, payload, error)
   }
 }
